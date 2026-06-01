@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/ao-data/albiondata-client/client"
 	"github.com/ao-data/albiondata-client/icon"
 	"github.com/ao-data/albiondata-client/log"
 	"github.com/getlantern/systray"
@@ -36,15 +37,27 @@ func onExit() {
 func onReady() {
 	systray.SetIcon(icon.Data)
 	systray.SetTitle("") // Clear text since we have an icon now
-	systray.SetTooltip("Albion Data Client")
+	systray.SetTooltip("Codex Client")
 
+	mStatus := systray.AddMenuItem(codexStatusTitle(), "Whether this PC is linked to your Codex account")
+	mStatus.Disable()
+	mPanel := systray.AddMenuItem("Open Control Panel", "Open the Codex Client window")
+	mAccount := systray.AddMenuItem("Manage devices on Codex", "Open your Codex account page in the browser")
+	systray.AddSeparator()
 	mOpenLog := systray.AddMenuItem("Open Log File", "Open the log file in default viewer")
 	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Close the Albion Data Client")
+	mQuit := systray.AddMenuItem("Quit", "Close the Codex Client")
 
 	go func() {
 		for {
 			select {
+			case <-mPanel.ClickedCh:
+				client.OpenPanel()
+				mStatus.SetTitle(codexStatusTitle())
+
+			case <-mAccount.ClickedCh:
+				client.OpenBrowser(client.CodexAccountURL())
+
 			case <-mOpenLog.ClickedCh:
 				openLogFile()
 

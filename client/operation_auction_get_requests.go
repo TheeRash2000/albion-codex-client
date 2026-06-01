@@ -41,6 +41,9 @@ func (op operationAuctionGetRequestsResponse) Process(state *albionState) {
 		Orders: orders,
 	}
 
+	srv, _ := state.GetServer()
+	uploadMarketToCodex(orders, codexServerName(srv))
+
 	identifier, _ := uuid.NewV4()
 	log.Infof("Sending %d live market buy orders to ingest (Identifier: %s)", len(orders), identifier)
 	sendMsgToPublicUploaders(upload, lib.NatsMarketOrdersIngest, state, identifier.String())

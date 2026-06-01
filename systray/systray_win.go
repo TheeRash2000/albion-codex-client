@@ -63,29 +63,42 @@ func onReady() {
 		hideConsole()
 	}
 	systray.SetIcon(icon.Data)
-	systray.SetTitle("Albion Data Client")
-	systray.SetTooltip("Albion Data Client")
+	systray.SetTitle("Codex Client")
+	systray.SetTooltip("Codex Client - destiny board capture for albioncodex.com")
+
+	mStatus := systray.AddMenuItem(codexStatusTitle(), "Whether this PC is linked to your Codex account")
+	mStatus.Disable()
+	systray.AddSeparator()
+
+	mPanel := systray.AddMenuItem("Open Control Panel", "Open the Codex Client window")
+	mAccount := systray.AddMenuItem("Manage devices on Codex", "Open your Codex account page in the browser")
+	systray.AddSeparator()
+
 	mConHideShow := systray.AddMenuItem(GetActionTitle(), "Show/Hide Console")
-	mQuit := systray.AddMenuItem("Quit", "Close the Albion Data Client")
+	mQuit := systray.AddMenuItem("Quit", "Close the Codex Client")
 
-	func() {
-		for {
-			select {
-			case <-mQuit.ClickedCh:
-				fmt.Println("Requesting quit")
-				systray.Quit()
-				os.Exit(0)
-				fmt.Println("Finished quitting")
+	for {
+		select {
+		case <-mQuit.ClickedCh:
+			fmt.Println("Requesting quit")
+			systray.Quit()
+			os.Exit(0)
 
-			case <-mConHideShow.ClickedCh:
-				if consoleHidden == true {
-					showConsole()
-					mConHideShow.SetTitle(GetActionTitle())
-				} else {
-					hideConsole()
-					mConHideShow.SetTitle(GetActionTitle())
-				}
+		case <-mPanel.ClickedCh:
+			client.OpenPanel()
+			mStatus.SetTitle(codexStatusTitle())
+
+		case <-mAccount.ClickedCh:
+			client.OpenBrowser(client.CodexAccountURL())
+
+		case <-mConHideShow.ClickedCh:
+			if consoleHidden {
+				showConsole()
+				mConHideShow.SetTitle(GetActionTitle())
+			} else {
+				hideConsole()
+				mConHideShow.SetTitle(GetActionTitle())
 			}
 		}
-	}()
+	}
 }

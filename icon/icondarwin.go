@@ -1,6 +1,6 @@
 //go:build darwin
 
-// File generated from icon/albiondata-client.png
+// Codex Client tray icon (macOS).
 
 package icon
 
@@ -8,5 +8,5 @@ import (
 	_ "embed"
 )
 
-//go:embed albiondata-client.png
+//go:embed codex-client.png
 var Data []byte

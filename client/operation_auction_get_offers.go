@@ -87,6 +87,11 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 		Orders: orders,
 	}
 
+	// Codex first, so a failure in the third-party (public) uploader can never
+	// prevent our own upload.
+	srv, _ := state.GetServer()
+	uploadMarketToCodex(orders, codexServerName(srv))
+
 	identifier, _ := uuid.NewV4()
 	log.Infof("Sending %d live market sell orders to ingest (Identifier: %s)", len(orders), identifier)
 	sendMsgToPublicUploaders(upload, lib.NatsMarketOrdersIngest, state, identifier.String())

@@ -23,8 +23,20 @@ func init() {
 
 func main() {
 	if client.ConfigGlobal.PrintVersion {
-		log.Infof("Albion Data Client, version: %s", version)
+		log.Infof("Codex Client, version: %s", version)
 		return
+	}
+
+	// Codex device pairing is a one-shot interactive command, then exit.
+	if client.ConfigGlobal.CodexPair {
+		client.RunCodexPairing()
+		return
+	}
+
+	// Normal run = control-panel mode: hide the raw console and show the panel
+	// window instead. Debuggers (and offline replays) keep the console.
+	if !client.ConfigGlobal.Offline && !client.ConfigGlobal.Debug && !client.ConfigGlobal.Trace {
+		client.ConfigGlobal.Minimize = true
 	}
 
 	startUpdater()
@@ -56,6 +68,15 @@ func runClient() {
 }
 
 func startUpdater() {
+	// Auto-update is disabled for the Codex Client. The upstream updater pulls
+	// release assets from a public GitHub repo (ao-data/albiondata-client); leaving
+	// it on would let a versioned build replace itself with the UPSTREAM binary and
+	// lose all Codex functionality. codex-client is a private repo and ships its own
+	// builds, so we no-op here.
+	if true {
+		return
+	}
+
 	if version != "" && !strings.Contains(version, "dev") {
 		u := updater.NewUpdater(
 			version,

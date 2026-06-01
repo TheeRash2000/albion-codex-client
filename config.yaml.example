@@ -1,3 +1,12 @@
 # EnableWebsockets: False
 # AllowedWebsocketHosts:
 #   - www.example.com
+
+# --- Codex ---
+# Destiny-board upload to your Codex account (https://albioncodex.com).
+# CodexBaseURL: https://albioncodex.com
+#
+# Device token from pairing. Prefer the CODEX_TOKEN environment variable so the
+# token stays out of this file and your shell history:
+#   CODEX_TOKEN (env)  overrides  CodexToken (below)  overrides  --codex-token (flag)
+# CodexToken:

@@ -135,8 +135,11 @@ func decodeEvent(params map[uint8]interface{}) (event operation, err error) {
 	switch EventType(eventType) {
 	// case evRespawn: //TODO: confirm this eventCode (old 77)
 	// 	event = &eventPlayerOnlineStatus{}
-	// case evCharacterStats: //TODO: confirm this eventCode (old 114)
-	// 	event = &eventSkillData{}
+	// Destiny board: the full board arrives as evFullAchievementInfo (event 151),
+	// node IDs + levels. This is the Codex client's primary payload. (evCharacterStats
+	// / event 154 carry stats and the fame-bearing subset; not needed for import.)
+	case evFullAchievementInfo:
+		event = &eventFullAchievementInfo{}
 	//case evRedZonePlayerNotification:
 	//	event = &eventRedZonePlayerNotification{}
 	case evRedZoneWorldMapEvent:

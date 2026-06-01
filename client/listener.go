@@ -151,6 +151,10 @@ func (l *listener) processPacket(packet gopacket.Packet) {
 		return
 	}
 
+	// Capture is BPF-filtered to Albion's port, so any packet here is the player's
+	// live session. Stamp it for the panel's "seeing your game" indicator.
+	Status.markSeen()
+
 	l.router.albionstate.GameServerIP = ipv4.SrcIP.String()
 	l.router.albionstate.AODataServerID, l.router.albionstate.AODataIngestBaseURL = l.router.albionstate.GetServer()
 	log.Tracef("Server ID: %d", l.router.albionstate.AODataServerID)

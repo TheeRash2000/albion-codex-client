@@ -69,20 +69,29 @@ type config struct {
 	PrintVersion                   bool
 	UpdateGithubOwner              string
 	UpdateGithubRepo               string
+	// Codex: destiny-board upload to the player's Codex account.
+	CodexBaseURL      string
+	CodexToken        string
+	CodexPair         bool
+	CodexMarketUpload bool
 }
 
 // config global config data
 var ConfigGlobal = &config{
 	LogLevel:          "INFO",
 	UpdateGithubOwner: "ao-data",
-	UpdateGithubRepo:  "albiondata-client"}
+	UpdateGithubRepo:  "albiondata-client",
+	CodexBaseURL:      "https://albioncodex.com"}
 
 func (config *config) SetupFlags() {
 	config.setupWebsocketFlags()
 	config.setupDebugFlags()
 	config.setupCommonFlags()
+	config.setupCodexFlags()
 
 	flag.Parse()
+
+	config.applyCodexEnv()
 
 	if config.OfflinePath != "" {
 		config.Offline = true
@@ -225,8 +234,8 @@ func (config *config) setupCommonFlags() {
 	flag.StringVar(
 		&config.PublicIngestBaseUrls,
 		"i",
-		"https+pow://albion-online-data.com",
-		"Base URL to send PUBLIC data to, can be 'nats://', 'http://', 'https://' or 'noop' and can have multiple uploaders. Comma separated.",
+		"",
+		"Base URL to send PUBLIC market data to (third-party, e.g. AODP), can be 'nats://', 'http://' or 'https://', comma separated. Empty by default - Codex does NOT upload to third parties. Pass an AODP URL here to opt in. (Do not use 'noop'; createUploaders panics on short tokens.)",
 	)
 
 	flag.StringVar(
@@ -242,6 +251,61 @@ func (config *config) setupCommonFlags() {
 		"",
 		"Enable recording commands to a file for debugging later.",
 	)
+}
+
+// setupCodexFlags wires the Codex destiny-board upload config. Precedence (low to
+// high): built-in default -> config.yaml (CodexBaseURL / CodexToken) -> CLI flag ->
+// environment (CODEX_BASE_URL / CODEX_TOKEN, applied after flag.Parse). viper has
+// already read config.yaml in setupWebsocketFlags.
+func (config *config) setupCodexFlags() {
+	if viper.IsSet("CodexBaseURL") {
+		config.CodexBaseURL = viper.GetString("CodexBaseURL")
+	}
+	if viper.IsSet("CodexToken") {
+		config.CodexToken = viper.GetString("CodexToken")
+	}
+
+	flag.StringVar(
+		&config.CodexBaseURL,
+		"codex-url",
+		config.CodexBaseURL,
+		"Codex base URL the destiny board is uploaded to.",
+	)
+	flag.StringVar(
+		&config.CodexToken,
+		"codex-token",
+		config.CodexToken,
+		"Codex device token from pairing. Prefer the CODEX_TOKEN env var so it stays out of shell history.",
+	)
+	flag.BoolVar(
+		&config.CodexPair,
+		"codex-pair",
+		false,
+		"Link this PC to your Codex account (interactive), save the token, then exit.",
+	)
+	flag.BoolVar(
+		&config.CodexMarketUpload,
+		"codex-market",
+		true,
+		"Contribute market prices you scan in-game to your Codex network (ON by default; pass -codex-market=false to disable).",
+	)
+}
+
+// applyCodexEnv lets environment variables override config.yaml and flags, and
+// falls back to the token saved by `--codex-pair`. Useful for keeping the device
+// token out of config files and command lines.
+func (config *config) applyCodexEnv() {
+	if v := strings.TrimSpace(os.Getenv("CODEX_BASE_URL")); v != "" {
+		config.CodexBaseURL = v
+	}
+	if v := strings.TrimSpace(os.Getenv("CODEX_TOKEN")); v != "" {
+		config.CodexToken = v
+	}
+	// Lowest priority: the token persisted by the pairing flow (stable per-user
+	// path, with migration from the legacy cwd-relative file).
+	if config.CodexToken == "" {
+		config.CodexToken = loadCodexToken()
+	}
 }
 
 func (config *config) setupLogs() {

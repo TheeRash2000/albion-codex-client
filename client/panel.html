@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Codex Client</title>
+<style>
+  :root {
+    --bg: #09080A; --card: #141118; --card2: #1A1720;
+    --gold: #C89B3C; --text: #EAE8E2; --muted: #9A9490;
+    --green: #48B068; --red: #C84848; --border: #2A2533;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
+    -webkit-user-select: none; user-select: none;
+    padding: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand .mark {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--gold), #8a6a22);
+    display: grid; place-items: center; color: #09080A; font-weight: 800;
+  }
+  .brand h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
+  .brand .sub { color: var(--muted); font-size: 11px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .dot.on { background: var(--green); box-shadow: 0 0 10px rgba(72,176,104,.7); }
+  .dot.off { background: #4a4452; }
+  .dot.warn { background: var(--gold); box-shadow: 0 0 10px rgba(200,155,60,.6); }
+  .status-title { font-weight: 600; }
+  .status-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; }
+  .track { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  .track .tick { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font-size: 12px; flex: none; }
+  .track .tick.on { background: rgba(72,176,104,.16); color: var(--green); }
+  .track .tick.off { background: #221d2a; color: #5a5462; }
+  .track .name { flex: 1; }
+  .track .meta { color: var(--muted); font-size: 12px; }
+
+  .btn {
+    display: inline-block; width: 100%; text-align: center; cursor: pointer;
+    border-radius: 9px; padding: 11px 16px; font-weight: 600; font-size: 14px;
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    transition: background .15s, border-color .15s;
+  }
+  .btn:hover { background: var(--card2); }
+  .btn.primary { background: var(--gold); color: #09080A; border-color: var(--gold); }
+  .btn.primary:hover { filter: brightness(1.07); background: var(--gold); }
+  .btn + .btn { margin-top: 8px; }
+
+  .pairbox { text-align: center; }
+  .pairbox .code {
+    font-family: "Cascadia Code", Consolas, monospace; font-size: 30px; letter-spacing: 4px;
+    color: var(--gold); background: var(--card2); border: 1px dashed var(--border);
+    border-radius: 10px; padding: 14px; margin: 12px 0 8px; cursor: pointer;
+    transition: border-color .15s;
+  }
+  .pairbox .code:hover { border-color: var(--gold); }
+  .btn.copy { width: auto; padding: 8px 22px; margin: 0 auto 4px; }
+  .pairbox .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .pairbox .hint a { color: var(--gold); text-decoration: none; }
+  .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--border); border-top-color: var(--gold); border-radius:50%; animation: sp 1s linear infinite; vertical-align:-2px; margin-right:6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .foot { color: var(--muted); font-size: 11px; text-align: center; margin-top: 6px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="mark">C</div>
+    <div>
+      <h1>Codex Client</h1>
+      <div class="sub">albioncodex.com</div>
+    </div>
+  </div>
+
+  <!-- Npcap required (shown only when the capture driver is missing) -->
+  <div id="npcapCard" class="card hidden" style="border-color: var(--red);">
+    <div class="row" style="margin-bottom: 8px;">
+      <div class="dot off" style="background: var(--red); box-shadow: 0 0 10px rgba(200,72,72,.6);"></div>
+      <div class="status-title" style="color: var(--red);">Npcap required</div>
+    </div>
+    <p style="color: var(--muted); font-size: 12px; margin: 0 0 12px; line-height: 1.5;">
+      The Codex Client needs the free <b>Npcap</b> driver to read game traffic. Install it,
+      then restart this app.
+    </p>
+    <button id="npcapBtn" class="btn primary">Install Npcap</button>
+  </div>
+
+  <!-- Status -->
+  <div class="card">
+    <div class="row">
+      <div id="dot" class="dot off"></div>
+      <div>
+        <div id="statusTitle" class="status-title">Checking...</div>
+        <div id="statusSub" class="status-sub"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pairing (shown only while pairing) -->
+  <div id="pairCard" class="card pairbox hidden">
+    <div class="label">Link this PC</div>
+    <div id="pairCode" class="code" title="Click to copy">----</div>
+    <button id="copyBtn" class="btn copy">Copy code</button>
+    <div class="hint">
+      Enter this code at<br /><a id="pairLink" href="#" target="_blank">albioncodex.com/account/link</a>
+      <div style="margin-top:8px"><span class="spin"></span> waiting for you to confirm...</div>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="card">
+    <div class="label">Status</div>
+    <div class="track">
+      <div id="gameTick" class="tick off">&#10003;</div>
+      <div class="name">Seeing Your Game</div>
+      <div id="gameMeta" class="meta">No</div>
+    </div>
+    <div class="track">
+      <div id="boardTick" class="tick off">&#10003;</div>
+      <div class="name">Destiny Board</div>
+      <div id="boardMeta" class="meta">Not captured yet</div>
+    </div>
+    <div class="track">
+      <div id="marketTick" class="tick off">&#10003;</div>
+      <div class="name">Market Data</div>
+      <div id="marketMeta" class="meta">Off</div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div id="actions"></div>
+
+  <div class="foot">Keep this running, then log in to Albion or travel to another zone. Your Destiny Board uploads automatically - opening the board screen in-game alone will not send it.</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  async function api(path, method) {
+    const r = await fetch(path, { method: method || 'GET' });
+    return r.json();
+  }
+
+  function render(s) {
+    // Npcap missing takes priority - it blocks everything else.
+    const npc = $('npcapCard');
+    if (s.npcapMissing) npc.classList.remove('hidden');
+    else npc.classList.add('hidden');
+
+    // status
+    const dot = $('dot');
+    if (s.pairing) {
+      dot.className = 'dot warn';
+      $('statusTitle').textContent = 'Linking this PC...';
+      $('statusSub').textContent = '';
+    } else if (s.linked) {
+      dot.className = 'dot on';
+      $('statusTitle').textContent = 'Linked to Codex';
+      $('statusSub').textContent = s.character ? s.character : 'Log in or travel to another zone to capture your Destiny Board';
+    } else {
+      dot.className = 'dot off';
+      $('statusTitle').textContent = 'Not linked yet';
+      $('statusSub').textContent = 'Link this PC to upload your Destiny Board';
+    }
+
+    // pairing card
+    const pc = $('pairCard');
+    if (s.pairing && s.pairCode) {
+      pc.classList.remove('hidden');
+      $('pairCode').textContent = s.pairCode;
+      $('pairLink').href = s.pairUrl || '#';
+    } else {
+      pc.classList.add('hidden');
+    }
+
+    // seeing your game (BPF-filtered packets from your session)
+    $('gameTick').className = 'tick ' + (s.tracking ? 'on' : 'off');
+    $('gameMeta').textContent = s.tracking ? 'Yes' : 'No - is Albion running? Move or change zones';
+
+    // destiny board
+    $('boardTick').className = 'tick ' + (s.hasUploaded ? 'on' : 'off');
+    $('boardMeta').textContent = s.hasUploaded
+      ? (s.lastUploadNodes + ' nodes captured, ' + s.lastUploadAgo)
+      : (s.linked ? 'Change zones once to send it' : 'Link this PC first');
+
+    // market data
+    $('marketTick').className = 'tick ' + (s.marketOn ? 'on' : 'off');
+    $('marketMeta').textContent = s.marketOn ? 'On' : 'Off';
+
+    // actions
+    const a = $('actions');
+    a.innerHTML = '';
+    if (!s.linked && !s.pairing) {
+      const b = document.createElement('div');
+      b.className = 'btn primary';
+      b.textContent = 'Link this PC';
+      b.onclick = async () => { b.textContent = 'Starting...'; await api('/api/pair', 'POST'); refresh(); };
+      a.appendChild(b);
+    }
+    const open = document.createElement('div');
+    open.className = 'btn';
+    open.textContent = s.linked ? 'Manage devices on Codex' : 'Open Codex';
+    open.onclick = () => api('/api/open-codex', 'POST');
+    a.appendChild(open);
+  }
+
+  async function copyCode() {
+    const code = $('pairCode').textContent.trim();
+    if (!code || code === '----') return;
+    const btn = $('copyBtn');
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch (e) {
+      // Fallback for older engines: select the code so the user can Ctrl+C.
+      const r = document.createRange();
+      r.selectNodeContents($('pairCode'));
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }
+  $('copyBtn').addEventListener('click', copyCode);
+  $('pairCode').addEventListener('click', copyCode);
+  $('npcapBtn').addEventListener('click', () => api('/api/open-npcap', 'POST'));
+
+  async function refresh() {
+    try { render(await api('/api/status')); } catch (e) {}
+  }
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

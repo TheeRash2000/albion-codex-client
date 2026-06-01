@@ -31,6 +31,9 @@ func (op operationJoinResponse) Process(state *albionState) {
 		log.Debugf("Ignoring implausible join location value: %q", op.Location)
 	}
 
+	// A different CharacterId means the player switched account/character (JoinResponse
+	// also fires on every zone change with the SAME id, so gate on the id changing).
+	switched := state.CharacterName != "" && state.CharacterId != op.CharacterID
 	if state.CharacterId != op.CharacterID {
 		log.Infof("Updating player ID to %v.", op.CharacterID)
 	}
@@ -40,4 +43,10 @@ func (op operationJoinResponse) Process(state *albionState) {
 		log.Infof("Updating player to %v.", op.CharacterName)
 	}
 	state.CharacterName = op.CharacterName
+
+	if switched {
+		// Reflect the new character now and drop the old one's board status; the new
+		// board uploads when its event 151 arrives (login/zone change).
+		Status.switchCharacter(op.CharacterName)
+	}
 }

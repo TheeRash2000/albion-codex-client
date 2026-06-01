@@ -2,8 +2,8 @@
   "RT_GROUP_ICON": {
     "APP": {
       "0000": [
-        "../icon/albiondata-client.png",
-        "../icon/albiondata-client.png"
+        "../icon/codex-client.png",
+        "../icon/codex-client.ico"
       ]
     }
   },
@@ -11,10 +11,10 @@
     "#1": {
       "0409": {
         "identity": {
-          "name": "",
+          "name": "CodexClient",
           "version": ""
         },
-        "description": "",
+        "description": "Codex Client - destiny board capture for albioncodex.com",
         "minimum-os": "win7",
         "execution-level": "as invoker",
         "ui-access": false,
@@ -41,16 +41,16 @@
         },
         "info": {
           "0409": {
-            "Comments": "",
-            "CompanyName": "",
-            "FileDescription": "",
+            "Comments": "Destiny board capture for albioncodex.com",
+            "CompanyName": "Albion Codex",
+            "FileDescription": "Codex Client",
             "FileVersion": "",
-            "InternalName": "",
-            "LegalCopyright": "",
+            "InternalName": "codex-client",
+            "LegalCopyright": "MIT. Based on ao-data/albiondata-client.",
             "LegalTrademarks": "",
-            "OriginalFilename": "",
+            "OriginalFilename": "codex-client.exe",
             "PrivateBuild": "",
-            "ProductName": "",
+            "ProductName": "Codex Client",
             "ProductVersion": "",
             "SpecialBuild": ""
           }
