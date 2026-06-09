@@ -21,14 +21,32 @@ import (
 // that paired once never has to pair again even if the exe moves.
 const legacyTokenFile = "codex-token"
 
+// machineTokenPath returns the machine-wide token location
+// (%PROGRAMDATA%\CodexClient\codex-token on Windows), or "" if there is no such
+// dir. This is the most robust home for the token: it is outside OneDrive (so it
+// never dehydrates), independent of which folder the exe runs from, and shared
+// across the same machine's user/elevation contexts (ProgramData is machine-wide,
+// not per-user) - so "Run as administrator" and a normal launch read the same
+// token. It is the root-cause fix for the "still Not linked -> re-pair -> new
+// device every time" loop.
+func machineTokenPath() string {
+	// ProgramData is Windows-only; empty elsewhere, where this is simply skipped.
+	if pd := strings.TrimSpace(os.Getenv("ProgramData")); pd != "" {
+		return filepath.Join(pd, "CodexClient", "codex-token")
+	}
+	return ""
+}
+
 // tokenLocations lists every place we read/write the device token, in priority
-// order. Storing it next to the EXE (first) is what makes "link once, never
-// again" hold no matter how the client is launched: a different folder, a
-// double-click, or "Run as administrator" (which can switch to a different user
-// profile whose %APPDATA% differs). The per-user config dir is a second home so
-// the token survives moving the exe; the bare cwd file is legacy read support.
+// order. The machine-wide ProgramData path comes first so the token survives a
+// different folder, a OneDrive-synced exe dir, and "Run as administrator". The
+// exe-dir and per-user config dir follow as compatible second homes (and keep
+// older paired installs working); the bare cwd file is legacy read support.
 func tokenLocations() []string {
 	locs := []string{}
+	if m := machineTokenPath(); m != "" {
+		locs = append(locs, m)
+	}
 	if exe, err := os.Executable(); err == nil {
 		locs = append(locs, filepath.Join(filepath.Dir(exe), "codex-token"))
 	}
@@ -39,9 +57,13 @@ func tokenLocations() []string {
 	return locs
 }
 
-// primaryTokenPath is the most predictable, user-facing save location (right next
-// to the exe). Used only for the "token saved to ..." message.
+// primaryTokenPath is the most robust, user-facing save location: the machine-wide
+// ProgramData path when available, otherwise next to the exe. Used only for the
+// "token saved to ..." message.
 func primaryTokenPath() string {
+	if m := machineTokenPath(); m != "" {
+		return m
+	}
 	if exe, err := os.Executable(); err == nil {
 		return filepath.Join(filepath.Dir(exe), "codex-token")
 	}

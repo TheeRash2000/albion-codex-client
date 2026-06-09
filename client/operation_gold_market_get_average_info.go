@@ -26,6 +26,11 @@ func (op operationGoldMarketGetAverageInfoResponse) Process(state *albionState) 
 		TimeStamps: op.TimeStamps,
 	}
 
+	// Codex first, so a failure in the third-party (public) uploader can never
+	// prevent our own upload.
+	srv, _ := state.GetServer()
+	uploadGoldToCodex(upload, codexServerName(srv))
+
 	identifier, _ := uuid.NewV4()
 	log.Infof("Sending gold prices to ingest (Identifier: %s)", identifier)
 	sendMsgToPublicUploaders(upload, lib.NatsGoldPricesIngest, state, identifier.String())

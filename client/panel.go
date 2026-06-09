@@ -27,6 +27,7 @@ func StartPanel() {
 		return
 	}
 	panelURL = fmt.Sprintf("http://127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+	writePanelURL(panelURL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

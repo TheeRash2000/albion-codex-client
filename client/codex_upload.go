@@ -15,7 +15,7 @@ import (
 )
 
 // codexClientVersion identifies this client to the Codex ingest API.
-const codexClientVersion = "codex-client/alpha-0.1"
+const codexClientVersion = "codex-client/alpha-0.1.9"
 
 // codexCharacter mirrors the POST body the Codex ingest route expects:
 //
@@ -106,6 +106,7 @@ func uploadBoardToCodex(characterName, albionID, server string, skills []*lib.Sk
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		log.Infof("Codex: uploaded %d destiny-board nodes for %v.", len(board), characterName)
 		Status.recordUpload(characterName, len(board), true)
+		Status.addActivity("Destiny Board sent to Codex (" + characterName + ", " + strconv.Itoa(len(board)) + " nodes)")
 	case resp.StatusCode == http.StatusUnauthorized:
 		log.Error("Codex: device token rejected (401). Re-pair the client in Codex settings.")
 		Status.recordUpload(characterName, len(board), false)

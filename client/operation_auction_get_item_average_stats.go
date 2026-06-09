@@ -120,6 +120,11 @@ func (op operationAuctionGetItemAverageStatsResponse) Process(state *albionState
 		Histories:    histories,
 	}
 
+	// Codex first, so a failure in the third-party (public) uploader can never
+	// prevent our own upload.
+	srv, _ := state.GetServer()
+	uploadHistoryToCodex(upload, codexServerName(srv))
+
 	identifier, _ := uuid.NewV4()
 	log.Infof("Sending %d market history item average stats to ingest for albionID %d (Identifier: %s)", len(histories), mhInfo.albionId, identifier)
 	sendMsgToPublicUploaders(upload, lib.NatsMarketHistoriesIngest, state, identifier.String())

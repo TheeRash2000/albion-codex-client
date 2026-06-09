@@ -49,4 +49,8 @@ func (op operationJoinResponse) Process(state *albionState) {
 		// board uploads when its event 151 arrives (login/zone change).
 		Status.switchCharacter(op.CharacterName)
 	}
+
+	// If a board was captured before we knew the identity (event 151 raced ahead of
+	// this join), upload it now that CharacterId/Name are set. No-op otherwise.
+	flushPendingBoard(state)
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ao-data/albiondata-client/lib"
 	"github.com/ao-data/albiondata-client/log"
@@ -26,6 +27,122 @@ type codexPrice struct {
 type codexMarketPayload struct {
 	Server string       `json:"server,omitempty"`
 	Prices []codexPrice `json:"prices"`
+}
+
+// recordMarketActivity logs each uploaded price to the live panel feed, so the
+// user sees EXACTLY what left their PC (item + price), not just a count. A single
+// market scan is usually one item across a few qualities, so per-line is readable;
+// a large batch is capped with a "...and N more" tail so the feed never floods.
+func recordMarketActivity(prices []codexPrice) {
+	const maxLines = 15
+	shown := len(prices)
+	if shown > maxLines {
+		shown = maxLines
+	}
+	if extra := len(prices) - shown; extra > 0 {
+		Status.addActivity("...and " + strconv.Itoa(extra) + " more prices sent to Codex")
+	}
+	for i := 0; i < shown; i++ {
+		Status.addActivity(formatPriceLine(prices[i]))
+	}
+}
+
+// formatPriceLine renders one uploaded price like "T7.2 Planks Q2 - sell 1,234"
+// or "Adept's Bag - sell 980 / buy 900".
+func formatPriceLine(p codexPrice) string {
+	label := humanizeItemID(p.ItemID)
+	if p.Quality > 1 {
+		label += " Q" + strconv.Itoa(p.Quality)
+	}
+	var parts []string
+	if p.SellMin != nil {
+		parts = append(parts, "sell "+formatSilver(*p.SellMin))
+	}
+	if p.BuyMax != nil {
+		parts = append(parts, "buy "+formatSilver(*p.BuyMax))
+	}
+	if len(parts) == 0 {
+		return label + " sent to Codex"
+	}
+	return label + " - " + strings.Join(parts, " / ")
+}
+
+// humanizeItemID turns a raw Albion item id ("T7_PLANKS_LEVEL2@2",
+// "T8_2H_AXE_KEEPER") into a readable "T7.2 Planks" / "T8 2h Axe Keeper" label.
+// It keeps the tier + enchant and title-cases the rest; no item-name database is
+// bundled, so the wording stays close to the id but is far clearer than the raw id.
+func humanizeItemID(id string) string {
+	s := id
+	ench := ""
+	if i := strings.IndexByte(s, '@'); i >= 0 {
+		ench = s[i+1:]
+		s = s[:i]
+	}
+	// Resource enchant can also appear as a "_LEVELn" suffix.
+	if idx := strings.Index(s, "_LEVEL"); idx >= 0 {
+		if ench == "" {
+			ench = s[idx+len("_LEVEL"):]
+		}
+		s = s[:idx]
+	}
+	tier := ""
+	if len(s) >= 2 && s[0] == 'T' {
+		j := 1
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			j++
+		}
+		if j > 1 && j < len(s) && s[j] == '_' {
+			tier = s[1:j]
+			s = s[j+1:]
+		}
+	}
+	name := titleWords(strings.ReplaceAll(s, "_", " "))
+	prefix := ""
+	if tier != "" {
+		prefix = "T" + tier
+		if ench != "" && ench != "0" {
+			prefix += "." + ench
+		}
+		prefix += " "
+	}
+	out := strings.TrimSpace(prefix + name)
+	if out == "" {
+		return id
+	}
+	return out
+}
+
+// titleWords lower-cases then capitalises the first letter of each word.
+func titleWords(s string) string {
+	words := strings.Fields(strings.ToLower(s))
+	for i, w := range words {
+		r := []rune(w)
+		if len(r) > 0 {
+			r[0] = unicode.ToUpper(r[0])
+		}
+		words[i] = string(r)
+	}
+	return strings.Join(words, " ")
+}
+
+// formatSilver adds thousands separators to a silver amount (1234567 -> "1,234,567").
+func formatSilver(n int) string {
+	s := strconv.Itoa(n)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var b []byte
+	for i := 0; i < len(s); i++ {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b = append(b, ',')
+		}
+		b = append(b, s[i])
+	}
+	if neg {
+		return "-" + string(b)
+	}
+	return string(b)
 }
 
 // codexServerName maps the client's detected server id (state.GetServer) to the
@@ -142,6 +259,7 @@ func uploadMarketToCodex(orders []*lib.MarketOrder, server string) {
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		log.Infof("Codex: uploaded %d market prices.", len(prices))
+		recordMarketActivity(prices)
 	case resp.StatusCode == http.StatusUnauthorized:
 		log.Error("Codex market: device token rejected (401).")
 	default:

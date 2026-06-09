@@ -28,7 +28,18 @@ type ClientStatus struct {
 	// (capture is BPF-filtered to the game port). Atomic so the hot capture path
 	// can stamp it without taking the mutex. Drives the "seeing your game" row.
 	lastSeenNano atomic.Int64
+
+	// activity is a small ring of human-readable events (captures + uploads), shown
+	// live in the panel so the user can watch data leave for Codex.
+	activity []activityEntry
 }
+
+type activityEntry struct {
+	at  time.Time
+	msg string
+}
+
+const maxActivity = 40
 
 // trackingWindow is how recently we must have seen a game packet to call the
 // session "tracking". Albion sends keepalives, so a live session stamps this
@@ -36,8 +47,21 @@ type ClientStatus struct {
 const trackingWindow = 30 * time.Second
 
 // markSeen records that we just observed a packet from the player's game session.
+// The first packet of the run also logs a one-time "seeing your game" line.
 func (s *ClientStatus) markSeen() {
-	s.lastSeenNano.Store(time.Now().UnixNano())
+	if s.lastSeenNano.Swap(time.Now().UnixNano()) == 0 {
+		s.addActivity("Seeing your game - capturing")
+	}
+}
+
+// addActivity appends a human-readable event to the live activity feed.
+func (s *ClientStatus) addActivity(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activity = append(s.activity, activityEntry{at: time.Now(), msg: msg})
+	if len(s.activity) > maxActivity {
+		s.activity = s.activity[len(s.activity)-maxActivity:]
+	}
 }
 
 // Status is the process-wide control-panel state.
@@ -105,6 +129,12 @@ type statusSnapshot struct {
 	PairCode        string `json:"pairCode"`
 	PairURL         string `json:"pairUrl"`
 	NpcapMissing    bool   `json:"npcapMissing"`
+	Activity        []activityItem `json:"activity"`
+}
+
+type activityItem struct {
+	Ago string `json:"ago"`
+	Msg string `json:"msg"`
 }
 
 func (s *ClientStatus) snapshot() statusSnapshot {
@@ -131,6 +161,10 @@ func (s *ClientStatus) snapshot() statusSnapshot {
 	}
 	if !s.lastUploadAt.IsZero() {
 		snap.LastUploadAgo = humanizeSince(s.lastUploadAt)
+	}
+	// activity, most recent first
+	for i := len(s.activity) - 1; i >= 0; i-- {
+		snap.Activity = append(snap.Activity, activityItem{Ago: humanizeSince(s.activity[i].at), Msg: s.activity[i].msg})
 	}
 	return snap
 }

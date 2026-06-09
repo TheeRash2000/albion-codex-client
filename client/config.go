@@ -17,10 +17,22 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	logFileName = "albiondata-client.log"
-	maxLogFiles = 10
-)
+const maxLogFiles = 1
+
+// logFileName is where the client writes its log. It lives in the per-user config
+// dir (%APPDATA%\CodexClient on Windows) named codex-log.txt, so it does not
+// clutter the folder the exe runs from. Just one rotated backup is kept.
+var logFileName = resolveLogPath()
+
+func resolveLogPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil || dir == "" {
+		return "codex-log.txt"
+	}
+	d := filepath.Join(dir, "CodexClient")
+	_ = os.MkdirAll(d, 0o700)
+	return filepath.Join(d, "codex-log.txt")
+}
 
 // ansiStripWriter wraps an io.Writer and strips ANSI escape codes before writing
 type ansiStripWriter struct {

@@ -31,6 +31,18 @@ func (op operationReadMail) Process(state *albionState) {
 		log.Debug("Read finished sell order.")
 		notification = decodeSellNotification(op, body)
 
+		// Codex: contribute the realized sale (what actually sold + at what price).
+		if sell, ok := notification.(*lib.MarketSellNotification); ok && sell != nil {
+			srv, _ := state.GetServer()
+			uploadSaleToCodex(codexSale{
+				MailID:    sell.MailID,
+				ItemID:    sell.ItemID,
+				City:      sell.LocationID,
+				Amount:    sell.Amount,
+				UnitPrice: sell.Price,
+			}, codexServerName(srv))
+		}
+
 	} else if mailInfo.OrderType == "MARKETPLACE_SELLORDER_EXPIRED_SUMMARY" {
 		log.Debug("Read expired sell order.")
 		notification = decodeExpiryNotification(op, body)

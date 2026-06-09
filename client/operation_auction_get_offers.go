@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/ao-data/albiondata-client/lib"
@@ -34,6 +35,7 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 	state.WaitingForMarketData = false
 
 	if !state.IsValidLocation() {
+		Status.addActivity("Saw the market, but your location isn't set - change zones once so prices can send")
 		return
 	}
 
@@ -82,6 +84,7 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 	if len(orders) < 1 {
 		return
 	}
+	Status.addActivity("Read " + strconv.Itoa(len(orders)) + " market sell orders")
 
 	upload := lib.MarketUpload{
 		Orders: orders,

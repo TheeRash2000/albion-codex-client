@@ -53,6 +53,17 @@ func (event eventFullAchievementInfo) Process(state *albionState) {
 	server := codexServerName(srv)
 	log.Infof("Captured Destiny Board for %v (%v, %v): %d in-progress + %d completed nodes.",
 		state.CharacterName, albionID, server, n, len(event.CompletedIDs))
+	Status.addActivity("Captured your Destiny Board")
+
+	// If the join response hasn't set the player's identity yet (event 151 can
+	// arrive first), hold the board and let operation_join.go upload it once the
+	// id is known - otherwise it would upload with no albion_id and match by name.
+	if albionID == "" || state.CharacterName == "" {
+		log.Debug("Character identity not known yet; holding the board until the join response sets it.")
+		stashBoard(server, skills)
+		return
+	}
+
 	Status.setCharacter(state.CharacterName)
 	uploadBoardToCodex(state.CharacterName, albionID, server, skills)
 }

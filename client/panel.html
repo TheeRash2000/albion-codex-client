@@ -136,6 +136,12 @@
     </div>
   </div>
 
+  <!-- Activity (live feed of what is being sent to Codex) -->
+  <div class="card">
+    <div class="label">Activity</div>
+    <div id="activity" style="max-height:180px;overflow-y:auto;">No activity yet - log in and change zones to start.</div>
+  </div>
+
   <!-- Actions -->
   <div id="actions"></div>
 
@@ -194,6 +200,18 @@
     // market data
     $('marketTick').className = 'tick ' + (s.marketOn ? 'on' : 'off');
     $('marketMeta').textContent = s.marketOn ? 'On' : 'Off';
+
+    // activity feed - live, human-readable record of what is sent to Codex
+    const act = $('activity');
+    if (s.activity && s.activity.length) {
+      act.innerHTML = s.activity.map(function(a) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+          '<span style="color:var(--text);">' + a.msg + '</span>' +
+          '<span style="color:var(--muted);white-space:nowrap;">' + a.ago + '</span></div>';
+      }).join('');
+    } else {
+      act.textContent = 'No activity yet - log in and change zones to start.';
+    }
 
     // actions
     const a = $('actions');

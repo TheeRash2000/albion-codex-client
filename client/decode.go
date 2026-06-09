@@ -140,6 +140,10 @@ func decodeEvent(params map[uint8]interface{}) (event operation, err error) {
 	// / event 154 carry stats and the fame-bearing subset; not needed for import.)
 	case evFullAchievementInfo:
 		event = &eventFullAchievementInfo{}
+	// Server's own estimated market value for an item (the tooltip value), pushed
+	// when the player views the item. A manipulation-resistant price signal.
+	case evEstimatedMarketValueUpdate:
+		event = &eventEstimatedMarketValue{}
 	//case evRedZonePlayerNotification:
 	//	event = &eventRedZonePlayerNotification{}
 	case evRedZoneWorldMapEvent:

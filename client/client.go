@@ -50,6 +50,22 @@ func (client *Client) Run() error {
 		os.Exit(0)
 
 	} else {
+		// Single instance: if a Codex Client is already running, reopen its window
+		// and exit instead of starting a duplicate (duplicates caused the multiple
+		// panel windows and the linked/not-linked confusion).
+		if !acquireSingleInstance() {
+			// Only one client may run at a time. Rather than silently exit (which
+			// looks like "nothing happened" and makes people relaunch), reopen the
+			// already-running instance's control-panel window using the URL it saved.
+			if u := readPanelURL(); u != "" {
+				log.Info("Codex Client is already running; reopening its window.")
+				openPanelWindow(u)
+			} else {
+				log.Info("Codex Client is already running; this duplicate launch is exiting (no second window).")
+			}
+			return nil
+		}
+
 		// Launch at Windows login so it is running before the player logs into
 		// Albion (the game only sends the board/market data while capturing).
 		ensureAutostart()

@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"strconv"
 
 	"github.com/ao-data/albiondata-client/lib"
 	"github.com/ao-data/albiondata-client/log"
@@ -36,6 +37,7 @@ func (op operationAuctionGetRequestsResponse) Process(state *albionState) {
 	if len(orders) < 1 {
 		return
 	}
+	Status.addActivity("Read " + strconv.Itoa(len(orders)) + " market buy orders")
 
 	upload := lib.MarketUpload{
 		Orders: orders,
