@@ -1,12 +1,9 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ao-data/albiondata-client/lib"
 	"github.com/ao-data/albiondata-client/log"
@@ -41,29 +38,10 @@ func uploadGoldToCodex(up lib.GoldPricesUpload, server string) {
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, codexBase()+"/api/client/gold", bytes.NewReader(body))
-	if err != nil {
-		log.Errorf("Codex gold: could not build request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
-
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-	if err != nil {
-		log.Errorf("Codex gold: upload failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		log.Infof("Codex: uploaded %d gold prices.", len(up.Prices))
-		Status.addActivity("Sent " + strconv.Itoa(len(up.Prices)) + " gold prices to Codex")
-	case resp.StatusCode == http.StatusUnauthorized:
-		log.Error("Codex gold: device token rejected (401).")
-	default:
-		log.Errorf("Codex gold: rejected with status %d.", resp.StatusCode)
-	}
+	// Gold history is re-observable (the game re-fetches it): low-value (shed first).
+	n := len(up.Prices)
+	enqueueCodexUpload("Gold", "/api/client/gold", body, n, true, func() {
+		log.Infof("Codex: uploaded %d gold prices.", n)
+		Status.addActivity("Sent " + strconv.Itoa(n) + " gold prices to Codex")
+	})
 }

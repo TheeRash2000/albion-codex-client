@@ -1,21 +1,18 @@
 package client
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ao-data/albiondata-client/lib"
 	"github.com/ao-data/albiondata-client/log"
 )
 
 // codexClientVersion identifies this client to the Codex ingest API.
-const codexClientVersion = "codex-client/alpha-0.1.9"
+const codexClientVersion = "codex-client/alpha-0.1.15"
 
 // codexCharacter mirrors the POST body the Codex ingest route expects:
 //
@@ -82,36 +79,12 @@ func uploadBoardToCodex(characterName, albionID, server string, skills []*lib.Sk
 		return
 	}
 
-	base := strings.TrimRight(strings.TrimSpace(ConfigGlobal.CodexBaseURL), "/")
-	if base == "" {
-		base = "https://albioncodex.com"
-	}
-	req, err := http.NewRequest(http.MethodPost, base+"/api/client/ingest", bytes.NewReader(body))
-	if err != nil {
-		log.Errorf("Codex: could not build request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
-
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-	if err != nil {
-		log.Errorf("Codex: board upload failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		log.Infof("Codex: uploaded %d destiny-board nodes for %v.", len(board), characterName)
-		Status.recordUpload(characterName, len(board), true)
-		Status.addActivity("Destiny Board sent to Codex (" + characterName + ", " + strconv.Itoa(len(board)) + " nodes)")
-	case resp.StatusCode == http.StatusUnauthorized:
-		log.Error("Codex: device token rejected (401). Re-pair the client in Codex settings.")
-		Status.recordUpload(characterName, len(board), false)
-	default:
-		log.Errorf("Codex: board upload rejected with status %d.", resp.StatusCode)
-		Status.recordUpload(characterName, len(board), false)
-	}
+	// The Destiny board is high-value (a full capture only re-arrives on the next
+	// login / zone change), so it is never shed from a full queue.
+	nodes := len(board)
+	enqueueCodexUpload("Destiny board", "/api/client/ingest", body, nodes, false, func() {
+		log.Infof("Codex: uploaded %d destiny-board nodes for %v.", nodes, characterName)
+		Status.recordUpload(characterName, nodes, true)
+		Status.addActivity("Destiny Board sent to Codex (" + characterName + ", " + strconv.Itoa(nodes) + " nodes)")
+	})
 }

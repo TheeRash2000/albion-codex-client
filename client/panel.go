@@ -51,6 +51,27 @@ func StartPanel() {
 		OpenBrowser(url)
 		writeJSON(w, map[string]string{"userCode": code, "verifyUrl": url})
 	})
+	// Toggle third-party (AODP) contribution. Persisted, and applied to the live
+	// config so the next captured browse already respects it - no restart.
+	mux.HandleFunc("/api/aodp", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			On bool `json:"on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]string{"error": "bad request"})
+			return
+		}
+		if err := SetAODPUpload(body.On); err != nil {
+			// The setting is live either way; only persistence failed. Say so
+			// rather than reporting success, or the player is told a choice was
+			// remembered that will be gone next launch.
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(w, map[string]interface{}{"on": AODPUploadEnabled(), "error": "could not save the setting"})
+			return
+		}
+		writeJSON(w, map[string]bool{"on": AODPUploadEnabled()})
+	})
 	mux.HandleFunc("/api/open-codex", func(w http.ResponseWriter, r *http.Request) {
 		OpenBrowser(CodexAccountURL())
 		writeJSON(w, map[string]bool{"ok": true})

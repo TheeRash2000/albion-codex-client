@@ -58,9 +58,11 @@ func (event eventFullAchievementInfo) Process(state *albionState) {
 	// If the join response hasn't set the player's identity yet (event 151 can
 	// arrive first), hold the board and let operation_join.go upload it once the
 	// id is known - otherwise it would upload with no albion_id and match by name.
+	// Bind the stash to whatever identity is active now so it can never be flushed
+	// under a different character after a switch.
 	if albionID == "" || state.CharacterName == "" {
 		log.Debug("Character identity not known yet; holding the board until the join response sets it.")
-		stashBoard(server, skills)
+		stashBoard(string(state.CharacterId), state.CharacterName, server, skills)
 		return
 	}
 

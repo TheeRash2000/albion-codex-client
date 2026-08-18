@@ -41,6 +41,7 @@ func toUint16(v interface{}) (uint16, bool) {
 }
 
 func decodeRequest(params map[uint8]interface{}) (operation operation, err error) {
+	codexDiagReq(params)
 	code, ok := resolveOperationCode(params)
 	if !ok {
 		return nil, nil
@@ -72,6 +73,7 @@ func decodeRequest(params map[uint8]interface{}) (operation operation, err error
 }
 
 func decodeResponse(params map[uint8]interface{}) (operation operation, err error) {
+	codexDiagResp(params)
 	code, ok := resolveOperationCode(params)
 	if !ok {
 		return nil, nil
@@ -124,6 +126,7 @@ func decodeResponse(params map[uint8]interface{}) (operation operation, err erro
 }
 
 func decodeEvent(params map[uint8]interface{}) (event operation, err error) {
+	codexDiagEvent(params)
 	eventType, ok := resolveEventCode(params)
 	if !ok {
 		log.Debugf("decodeEvent: unexpected type for params[252]: %T = %s", params[252], formatDebugValue(params[252], 0))

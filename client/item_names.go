@@ -9,7 +9,7 @@ import (
 )
 
 // game_item_ids.json maps the game's NUMERIC item id -> unique name (e.g.
-// "900" -> "T4_METALBAR_LEVEL1@1"). Generated from the AODP item index list.
+// "900" -> "T3_MEAT"). Generated from the AODP item index list.
 // Embedded so we can show readable item names for packets that carry only the
 // numeric id (the Estimated Market Value event), matching the market lines.
 //

@@ -15,7 +15,8 @@
   pwsh scripts/build-codex.ps1 -Version 0.1.0
 #>
 param(
-  [string]$Version = "dev"
+  [string]$Version = "dev",
+  [string]$Notes = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,3 +63,19 @@ if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
 $size = [math]::Round((Get-Item "$repo\codex-client.exe").Length / 1MB, 1)
 Write-Host "Built codex-client.exe ($size MB)" -ForegroundColor Green
+
+# Emit version.json, the auto-update manifest the client polls (codex_update.go).
+# Upload BOTH version.json and codex-client.exe to the Supabase "client" bucket on
+# release; clients self-update when version.json names a higher build than theirs.
+$sha = (Get-FileHash "$repo\codex-client.exe" -Algorithm SHA256).Hash.ToLower()
+$manifest = [ordered]@{
+  version = $Version
+  url     = 'https://blpjzxfbjwxrdfzeqxhl.supabase.co/storage/v1/object/public/client/codex-client.exe'
+  sha256  = $sha
+  notes   = $Notes
+}
+# Write UTF-8 WITHOUT a BOM: Go's encoding/json (the client's manifest parser)
+# does not skip a BOM, and Set-Content -Encoding utf8 on Windows PowerShell adds one.
+$json = $manifest | ConvertTo-Json
+[System.IO.File]::WriteAllText("$repo\version.json", $json, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "Wrote version.json (version $Version, sha256 $sha)" -ForegroundColor Green

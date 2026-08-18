@@ -34,11 +34,6 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 	log.Debug("Got response to AuctionGetOffers operation...")
 	state.WaitingForMarketData = false
 
-	if !state.IsValidLocation() {
-		Status.addActivity("Saw the market, but your location isn't set - change zones once so prices can send")
-		return
-	}
-
 	var orders []*lib.MarketOrder
 
 	for _, v := range op.MarketOrders {
@@ -84,6 +79,17 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 	if len(orders) < 1 {
 		return
 	}
+
+	srv, _ := state.GetServer()
+	// A market browse right after login/relog can arrive before the location is
+	// set. Rather than drop those prices, buffer them and flush once the zone
+	// resolves (codex_market_pending.go) so no browse is ever lost.
+	if !state.locationKnown() {
+		stashMarketOrders(orders, codexServerName(srv))
+		Status.addActivity("Saw the market before your zone loaded - holding " + strconv.Itoa(len(orders)) + " prices to send once it does")
+		return
+	}
+
 	Status.addActivity("Read " + strconv.Itoa(len(orders)) + " market sell orders")
 
 	upload := lib.MarketUpload{
@@ -92,7 +98,6 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 
 	// Codex first, so a failure in the third-party (public) uploader can never
 	// prevent our own upload.
-	srv, _ := state.GetServer()
 	uploadMarketToCodex(orders, codexServerName(srv))
 
 	identifier, _ := uuid.NewV4()

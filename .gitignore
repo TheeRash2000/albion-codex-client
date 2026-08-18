@@ -19,5 +19,7 @@ run.sh
 *.log.*
 *.exe~
 codex-token
+version.json
 
 
+codex-client-linux

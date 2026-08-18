@@ -1,9 +1,7 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -236,33 +234,11 @@ func uploadMarketToCodex(orders []*lib.MarketOrder, server string) {
 		log.Errorf("Codex market: could not encode prices: %v", err)
 		return
 	}
-	base := strings.TrimRight(strings.TrimSpace(ConfigGlobal.CodexBaseURL), "/")
-	if base == "" {
-		base = "https://albioncodex.com"
-	}
-	req, err := http.NewRequest(http.MethodPost, base+"/api/client/market", bytes.NewReader(body))
-	if err != nil {
-		log.Errorf("Codex market: could not build request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
-
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-	if err != nil {
-		log.Errorf("Codex market: upload failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		log.Infof("Codex: uploaded %d market prices.", len(prices))
+	// Market spot prices are re-observable on the next browse, so they are low-value
+	// (shed first if the queue ever overflows).
+	n := len(prices)
+	enqueueCodexUpload("Market prices", "/api/client/market", body, n, true, func() {
+		log.Infof("Codex: uploaded %d market prices.", n)
 		recordMarketActivity(prices)
-	case resp.StatusCode == http.StatusUnauthorized:
-		log.Error("Codex market: device token rejected (401).")
-	default:
-		log.Errorf("Codex market: rejected with status %d.", resp.StatusCode)
-	}
+	})
 }

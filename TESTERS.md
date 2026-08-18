@@ -35,4 +35,35 @@ else is uploaded.
 - It does **not** modify the game. It only reads network packets, which Albion's
   developers have said is fine.
 
+## Linux (alpha)
+
+The Linux build is a command-line alpha: same capture and upload pipeline, no
+tray window, no autostart, no auto-update (you download new builds yourself).
+The control panel still works - it opens in your normal browser.
+
+1. **No Npcap needed** - Linux uses libpcap, which your distro already has.
+   (Only building from source needs `libpcap-dev`.)
+2. Download `codex-client-linux` into its own folder and make it runnable:
+
+   ```bash
+   chmod +x codex-client-linux
+   ```
+
+3. **Allow packet capture** (one-time per downloaded build; capture needs a
+   network capability that normal programs don't have):
+
+   ```bash
+   sudo setcap cap_net_raw,cap_net_admin=eip ./codex-client-linux
+   ```
+
+   Don't run it with `sudo` instead - that works, but then your pairing token
+   lands in root's home and you'll be asked to re-link later.
+
+4. Run `./codex-client-linux`, then pair and play exactly like on Windows
+   (link page opens in the browser; board uploads on login/zone change).
+   Your token and log live in `~/.config/CodexClient/`.
+
+Works with Albion under Proton/Steam - the capture watches network traffic on
+the game's port, not the game process.
+
 Found a bug or something weird? Tell me - that's what this is for.

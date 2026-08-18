@@ -164,6 +164,7 @@ func RunCodexPairing() bool {
 				return true
 			}
 			ConfigGlobal.CodexToken = poll.Token
+			Status.setTokenRejected(false)
 			fmt.Printf("  Linked. Token saved next to the client (%s) - this PC stays linked; just keep this client running.\n", primaryTokenPath())
 			return true
 		case "expired", "not_found":
@@ -214,7 +215,9 @@ func StartPanelPairing() (userCode, verifyURL string, err error) {
 					log.Errorf("Codex pairing: linked, but could not save token: %v", err)
 				}
 				ConfigGlobal.CodexToken = poll.Token
+				Status.setTokenRejected(false)
 				Status.setPairing(false, "", "")
+				Status.addActivity("This PC is now linked to Codex")
 				log.Info("Codex: this PC is now linked.")
 				return
 			case "expired", "not_found":

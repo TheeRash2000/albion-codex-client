@@ -1,13 +1,10 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ao-data/albiondata-client/log"
 )
@@ -129,31 +126,12 @@ func uploadEMVToCodex(items, values []int64, server string) {
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, codexBase()+"/api/client/emv", bytes.NewReader(body))
-	if err != nil {
-		log.Errorf("Codex EMV: could not build request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
-
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-	if err != nil {
-		log.Errorf("Codex EMV: upload failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		log.Infof("Codex: uploaded %d estimated market value(s).", len(rows))
+	// EMV is game-cached and re-sends for uncached items: low-value (shed first).
+	count := len(rows)
+	enqueueCodexUpload("EMV", "/api/client/emv", body, count, true, func() {
+		log.Infof("Codex: uploaded %d estimated market value(s).", count)
 		recordEMVActivity(rows)
-	case resp.StatusCode == http.StatusUnauthorized:
-		log.Error("Codex EMV: device token rejected (401).")
-	default:
-		log.Errorf("Codex EMV: rejected with status %d.", resp.StatusCode)
-	}
+	})
 }
 
 // recordEMVActivity logs each captured estimated value to the panel feed as

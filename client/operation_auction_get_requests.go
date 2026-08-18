@@ -14,11 +14,7 @@ type operationAuctionGetRequestsResponse struct {
 }
 
 func (op operationAuctionGetRequestsResponse) Process(state *albionState) {
-	log.Debug("Got response to AuctionGetOffers operation...")
-
-	if !state.IsValidLocation() {
-		return
-	}
+	log.Debug("Got response to AuctionGetRequests operation...")
 
 	var orders []*lib.MarketOrder
 
@@ -37,13 +33,22 @@ func (op operationAuctionGetRequestsResponse) Process(state *albionState) {
 	if len(orders) < 1 {
 		return
 	}
+
+	srv, _ := state.GetServer()
+	// This buy-order path used to drop captures SILENTLY before the location was
+	// known. Buffer them instead and flush once the zone resolves.
+	if !state.locationKnown() {
+		stashMarketOrders(orders, codexServerName(srv))
+		Status.addActivity("Saw market buy orders before your zone loaded - holding " + strconv.Itoa(len(orders)) + " to send once it does")
+		return
+	}
+
 	Status.addActivity("Read " + strconv.Itoa(len(orders)) + " market buy orders")
 
 	upload := lib.MarketUpload{
 		Orders: orders,
 	}
 
-	srv, _ := state.GetServer()
 	uploadMarketToCodex(orders, codexServerName(srv))
 
 	identifier, _ := uuid.NewV4()

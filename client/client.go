@@ -37,6 +37,13 @@ func (client *Client) Run() error {
 		log.Info("Market collection: off (pass --codex-market to contribute scanned prices).")
 	}
 
+	if os.Getenv("CODEX_ADMIN") != "" {
+		ConfigGlobal.AdminMode = true
+	}
+	if adminMode() {
+		log.Info("ADMIN MODE ON: this session is always recorded (replayable for diagnosis); normal capture is unchanged.")
+	}
+
 	ConfigGlobal.setupDebugEvents()
 	ConfigGlobal.setupDebugOperations()
 
@@ -70,6 +77,19 @@ func (client *Client) Run() error {
 		// Albion (the game only sends the board/market data while capturing).
 		ensureAutostart()
 
+		// Start the Codex upload delivery queue (retry with backoff) before any
+		// capture path enqueues to it. Idempotent.
+		startCodexUploadQueue()
+
+		// Tell the site which build this device runs (admin device roster). Paired-
+		// only, fire-and-forget; placed after the single-instance guard so only the
+		// live instance reports, not a duplicate launch.
+		startVersionReporter(version)
+
+		// Keep the client up to date: check the published manifest in the background
+		// and self-update (checksum-verified) when a newer build ships, then restart.
+		startCodexUpdater(version)
+
 		// The control panel is the client's face: a small window with linked
 		// status, what's tracked, last upload, and a Link button.
 		StartPanel()
@@ -82,6 +102,9 @@ func (client *Client) Run() error {
 			log.Error("Npcap is not installed. Install it from the Codex Client window, then restart the app.")
 			select {} // keep the panel + tray alive; Quit from the tray exits
 		}
+
+		// Admin mode: point recording at a fresh rotating file before capture starts.
+		setupAdminRecording()
 
 		apw := newAlbionProcessWatcher()
 		return apw.run()

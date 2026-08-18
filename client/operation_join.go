@@ -45,12 +45,23 @@ func (op operationJoinResponse) Process(state *albionState) {
 	state.CharacterName = op.CharacterName
 
 	if switched {
-		// Reflect the new character now and drop the old one's board status; the new
-		// board uploads when its event 151 arrives (login/zone change).
+		// Reflect the new character now and drop the old one's board status. Crucially,
+		// DISCARD any pending board: it was captured under (or before) the PREVIOUS
+		// character and must never be flushed under this new identity. The game caches
+		// the board client-side, so right after a switch a stale board can still be in
+		// flight; attaching it to the new character is the corruption we are preventing.
+		// The new character's board uploads when its own event 151 arrives.
 		Status.switchCharacter(op.CharacterName)
+		dropPendingBoard()
+		return
 	}
 
-	// If a board was captured before we knew the identity (event 151 raced ahead of
-	// this join), upload it now that CharacterId/Name are set. No-op otherwise.
+	// Same character (a zone-change join fires with the same id) or first login: if a
+	// board was captured before we knew the identity (event 151 raced ahead of this
+	// join), upload it now that CharacterId/Name are set. No-op otherwise.
 	flushPendingBoard(state)
+
+	// Likewise, flush any market browse that arrived before the location was set
+	// (a browse right after login/relog). No-op when nothing is buffered.
+	flushPendingMarket(state)
 }

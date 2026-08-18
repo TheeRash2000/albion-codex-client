@@ -66,6 +66,30 @@ func (state albionState) IsValidLocation() bool {
 	}
 }
 
+// locationDigitsRe matches a numeric royal-city location id.
+var locationDigitsRe = regexp.MustCompile(`^[0-9]+$`)
+
+// locationKnown reports whether the player's location is set to a usable value,
+// WITHOUT the error log + desktop notification that IsValidLocation emits. The
+// market-capture path uses this so a not-yet-known location buffers the browse
+// (see codex_market_pending.go) instead of warning and dropping it.
+func (state albionState) locationKnown() bool {
+	switch {
+	case state.LocationId == "":
+		return false
+	case locationDigitsRe.MatchString(state.LocationId):
+		return true
+	case strings.HasPrefix(state.LocationId, "BLACKBANK-"):
+		return true
+	case strings.HasSuffix(state.LocationId, "-HellDen"):
+		return true
+	case strings.HasSuffix(state.LocationId, "-Auction2"):
+		return true
+	default:
+		return false
+	}
+}
+
 func (state albionState) GetServer() (int, string) {
 	// default to 0
 	var serverID = 0

@@ -18,4 +18,8 @@ func (op operationGetGameServerByCluster) Process(state *albionState) {
 		log.Infof("(operationGetGameServerByCluster) Updating player location to %v.", location)
 		state.LocationId = location
 	}
+
+	// A zone change resolves the location; flush any market browse that was
+	// buffered while it was unknown. No-op when nothing is buffered.
+	flushPendingMarket(state)
 }

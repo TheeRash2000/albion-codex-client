@@ -86,6 +86,7 @@ type config struct {
 	CodexToken        string
 	CodexPair         bool
 	CodexMarketUpload bool
+	AdminMode         bool
 }
 
 // config global config data
@@ -104,6 +105,11 @@ func (config *config) SetupFlags() {
 	flag.Parse()
 
 	config.applyCodexEnv()
+
+	// The panel's AODP checkbox, persisted across restarts. Applied after flags
+	// so it composes with an explicit -i rather than replacing it: the stored
+	// setting only ever ADDS our placeholder to whatever targets are configured.
+	applyStoredAODPSetting()
 
 	if config.OfflinePath != "" {
 		config.Offline = true
@@ -262,6 +268,13 @@ func (config *config) setupCommonFlags() {
 		"record",
 		"",
 		"Enable recording commands to a file for debugging later.",
+	)
+
+	flag.BoolVar(
+		&config.AdminMode,
+		"admin",
+		false,
+		"Admin/diagnostic mode: always record this session to a rotating .gob (under ProgramData\\CodexClient\\recordings) so any issue can be replayed and diagnosed later. Normal capture and upload are unchanged.",
 	)
 }
 

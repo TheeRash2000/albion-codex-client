@@ -33,6 +33,7 @@
   .dot.on { background: var(--green); box-shadow: 0 0 10px rgba(72,176,104,.7); }
   .dot.off { background: #4a4452; }
   .dot.warn { background: var(--gold); box-shadow: 0 0 10px rgba(200,155,60,.6); }
+  .dot.err { background: var(--red); box-shadow: 0 0 10px rgba(200,72,72,.6); }
   .status-title { font-weight: 600; }
   .status-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
@@ -134,12 +135,46 @@
       <div class="name">Market Data</div>
       <div id="marketMeta" class="meta">Off</div>
     </div>
+    <div class="track">
+      <div id="aodpTick" class="tick off">&#10003;</div>
+      <div class="name">Share with AODP</div>
+      <div id="aodpMeta" class="meta">Off</div>
+    </div>
+  </div>
+
+  <!-- Third-party contribution. ON by default since 0.1.15, and disclosed here,
+       in the changelog and on /download rather than being a silent change. An
+       explicit opt-out is stored as an explicit false and is never overridden by
+       a later change to the default. -->
+  <div class="card">
+    <div class="label">Share with AODP</div>
+    <div id="aodpText" style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+      On by default. The prices you scan are also sent to the Albion Online Data
+      Project, the free public price API most Albion tools are built on - this
+      client is a fork of theirs and Codex reads from them heavily, so it
+      contributes back. Switch it off any time and the choice sticks. Your Codex
+      upload is unaffected either way, and always goes first: if AODP is down it
+      cannot cost you your own data.
+    </div>
+    <button id="aodpBtn" class="btn" onclick="toggleAodp()">Turn on</button>
   </div>
 
   <!-- Activity (live feed of what is being sent to Codex) -->
   <div class="card">
     <div class="label">Activity</div>
     <div id="activity" style="max-height:180px;overflow-y:auto;">No activity yet - log in and change zones to start.</div>
+  </div>
+
+  <!-- Capture Health (per-stream upload counts + failures) -->
+  <div id="healthCard" class="card hidden">
+    <div class="label">Capture Health</div>
+    <div id="health"></div>
+  </div>
+
+  <!-- Issues (problems with data sent through: failed uploads, anomalies) -->
+  <div id="issuesCard" class="card hidden" style="border-color:#6a4a1a;">
+    <div class="label" style="color:var(--gold);">Issues flagged</div>
+    <div id="issues" style="max-height:160px;overflow-y:auto;"></div>
   </div>
 
   <!-- Actions -->
@@ -149,6 +184,36 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+
+  // Guards the poll from overwriting the button mid-write (see render).
+  var aodpBusy = false;
+
+  async function toggleAodp() {
+    if (aodpBusy) return;
+    const btn = $('aodpBtn');
+    const turningOn = btn.textContent === 'Turn on';
+    aodpBusy = true;
+    btn.disabled = true;
+    btn.textContent = turningOn ? 'Turning on...' : 'Turning off...';
+    try {
+      const r = await fetch('/api/aodp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on: turningOn })
+      });
+      const j = await r.json();
+      if (j.error) {
+        // The switch itself took effect; only saving it failed. Say which, so
+        // nobody assumes the choice will still be there after a restart.
+        $('aodpText').textContent = 'Setting applied for this session, but it could not be saved: ' + j.error;
+      }
+    } catch (e) {
+      $('aodpText').textContent = 'Could not reach the client to change this setting.';
+    }
+    btn.disabled = false;
+    aodpBusy = false;
+    refresh();
+  }
 
   async function api(path, method) {
     const r = await fetch(path, { method: method || 'GET' });
@@ -167,6 +232,10 @@
       dot.className = 'dot warn';
       $('statusTitle').textContent = 'Linking this PC...';
       $('statusSub').textContent = '';
+    } else if (s.linked && s.tokenRejected) {
+      dot.className = 'dot err';
+      $('statusTitle').textContent = 'Link broken - re-link this PC';
+      $('statusSub').textContent = 'This PC was unlinked on Codex, so uploads are being rejected. Link it again below.';
     } else if (s.linked) {
       dot.className = 'dot on';
       $('statusTitle').textContent = 'Linked to Codex';
@@ -201,6 +270,15 @@
     $('marketTick').className = 'tick ' + (s.marketOn ? 'on' : 'off');
     $('marketMeta').textContent = s.marketOn ? 'On' : 'Off';
 
+    // AODP contribution. Skipped while a toggle is in flight so the poll cannot
+    // flip the button back under the player's cursor before the write lands.
+    if (!aodpBusy) {
+      $('aodpTick').className = 'tick ' + (s.aodpUpload ? 'on' : 'off');
+      $('aodpMeta').textContent = s.aodpUpload ? 'On' : 'Off';
+      $('aodpBtn').textContent = s.aodpUpload ? 'Turn off' : 'Turn on';
+      $('aodpBtn').className = 'btn' + (s.aodpUpload ? '' : ' primary');
+    }
+
     // activity feed - live, human-readable record of what is sent to Codex
     const act = $('activity');
     if (s.activity && s.activity.length) {
@@ -213,13 +291,41 @@
       act.textContent = 'No activity yet - log in and change zones to start.';
     }
 
+    // capture health - per-stream sent / failed counts (+ queued/retrying)
+    const hc = $('healthCard');
+    if ((s.health && s.health.length) || s.queuedUploads) {
+      hc.classList.remove('hidden');
+      var queuedLine = s.queuedUploads
+        ? '<div class="track" style="padding:4px 0;"><div class="name">Pending delivery</div>' +
+          '<div class="meta"><span style="color:var(--gold);">' + s.queuedUploads + ' queued (retrying)</span></div></div>'
+        : '';
+      $('health').innerHTML = queuedLine + (s.health || []).map(function(x) {
+        const fail = x.failed ? ' <span style="color:var(--red);">' + x.failed + ' failed</span>' : '';
+        const last = x.lastSent ? ' &middot; <span style="color:var(--muted);">' + x.lastSent + '</span>' : '';
+        const errLine = x.lastErr ? '<div style="color:var(--red);font-size:11px;margin:-1px 0 5px;">' + x.lastErr + '</div>' : '';
+        return '<div class="track" style="padding:4px 0;"><div class="name">' + x.name + '</div>' +
+          '<div class="meta"><span style="color:var(--green);">' + x.sent + ' sent</span>' + fail + last + '</div></div>' + errLine;
+      }).join('');
+    } else { hc.classList.add('hidden'); }
+
+    // issues - flagged problems with data sent through (failed uploads, anomalies)
+    const ic = $('issuesCard');
+    if (s.issues && s.issues.length) {
+      ic.classList.remove('hidden');
+      $('issues').innerHTML = s.issues.map(function(a) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">' +
+          '<span style="color:var(--gold);">' + a.msg + '</span>' +
+          '<span style="color:var(--muted);white-space:nowrap;">' + a.ago + '</span></div>';
+      }).join('');
+    } else { ic.classList.add('hidden'); }
+
     // actions
     const a = $('actions');
     a.innerHTML = '';
-    if (!s.linked && !s.pairing) {
+    if ((!s.linked || s.tokenRejected) && !s.pairing) {
       const b = document.createElement('div');
       b.className = 'btn primary';
-      b.textContent = 'Link this PC';
+      b.textContent = s.tokenRejected ? 'Re-link this PC' : 'Link this PC';
       b.onclick = async () => { b.textContent = 'Starting...'; await api('/api/pair', 'POST'); refresh(); };
       a.appendChild(b);
     }

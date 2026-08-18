@@ -1,12 +1,9 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ao-data/albiondata-client/log"
 )
@@ -44,29 +41,10 @@ func uploadSaleToCodex(s codexSale, server string) {
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, codexBase()+"/api/client/sales", bytes.NewReader(body))
-	if err != nil {
-		log.Errorf("Codex sales: could not build request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
-
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-	if err != nil {
-		log.Errorf("Codex sales: upload failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	// A realized sale is unique and unrecoverable if lost (it only appears once, when
+	// the mail is read), so it is high-value: never shed from a full queue.
+	enqueueCodexUpload("Sales", "/api/client/sales", body, 1, false, func() {
 		log.Infof("Codex: recorded a sale (%dx %s @ %d).", s.Amount, s.ItemID, s.UnitPrice)
 		Status.addActivity("Recorded your sale: " + strconv.Itoa(s.Amount) + "x " + humanizeItemID(s.ItemID) + " at " + formatSilver(s.UnitPrice) + " each")
-	case resp.StatusCode == http.StatusUnauthorized:
-		log.Error("Codex sales: device token rejected (401).")
-	default:
-		log.Errorf("Codex sales: rejected with status %d.", resp.StatusCode)
-	}
+	})
 }

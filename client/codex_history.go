@@ -1,12 +1,9 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ao-data/albiondata-client/lib"
 	"github.com/ao-data/albiondata-client/log"
@@ -72,29 +69,11 @@ func uploadHistoryToCodex(up lib.MarketHistoriesUpload, server string) {
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, codexBase()+"/api/client/market-history", bytes.NewReader(body))
-	if err != nil {
-		log.Errorf("Codex history: could not build request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
-
-	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-	if err != nil {
-		log.Errorf("Codex history: upload failed: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		log.Infof("Codex: uploaded %d market-history points for item %d.", len(points), up.AlbionId)
-		Status.addActivity("Sent price history (" + strconv.Itoa(len(points)) + " points) to Codex")
-	case resp.StatusCode == http.StatusUnauthorized:
-		log.Error("Codex history: device token rejected (401).")
-	default:
-		log.Errorf("Codex history: rejected with status %d.", resp.StatusCode)
-	}
+	// History is re-fetched by the game and thus re-observable: low-value (shed first).
+	n := len(points)
+	albionID := up.AlbionId
+	enqueueCodexUpload("Market history", "/api/client/market-history", body, n, true, func() {
+		log.Infof("Codex: uploaded %d market-history points for item %d.", n, albionID)
+		Status.addActivity("Sent price history (" + strconv.Itoa(n) + " points) to Codex")
+	})
 }
