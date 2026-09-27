@@ -179,10 +179,10 @@ func RunCodexPairing() bool {
 	return false
 }
 
-// StartPanelPairing drives the device flow from the control panel: it requests a
+// StartUIPairing drives the device flow from the tray UI: it requests a
 // code, starts polling in the background, and returns the code + link URL for the
-// panel to display. On success it saves the token and flips Status to linked.
-func StartPanelPairing() (userCode, verifyURL string, err error) {
+// tray to display. On success it saves the token and flips Status to linked.
+func StartUIPairing() (userCode, verifyURL string, err error) {
 	base := codexBase()
 	label, _ := os.Hostname()
 

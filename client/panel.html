@@ -1,367 +1,569 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="utf-8">
 <title>Codex Client</title>
+<link rel="icon" href="/favicon.ico">
 <style>
-  :root {
-    --bg: #09080A; --card: #141118; --card2: #1A1720;
-    --gold: #C89B3C; --text: #EAE8E2; --muted: #9A9490;
-    --green: #48B068; --red: #C84848; --border: #2A2533;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
-  body {
-    background: var(--bg); color: var(--text);
-    font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
-    -webkit-user-select: none; user-select: none;
-    padding: 20px;
-  }
-  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-  .brand .mark {
-    width: 28px; height: 28px; border-radius: 7px;
-    background: linear-gradient(135deg, var(--gold), #8a6a22);
-    display: grid; place-items: center; color: #09080A; font-weight: 800;
-  }
-  .brand h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
-  .brand .sub { color: var(--muted); font-size: 11px; }
+/* Ledger design language, mirroring src/styles/ledger.css on the site.
+   Values are literal rather than imported: this page ships inside the binary
+   and must render with no network, so it cannot pull the site's stylesheet.
+   Fonts degrade to Georgia, which is close enough in shape that the layout
+   does not move. */
+:root{
+  --lx-bg:#09080A; --lx-well:#0e0e14;
+  --lx-card-from:rgba(34,27,17,0.55); --lx-card-to:rgba(17,14,9,0.42);
+  --lx-nav-from:#15120b; --lx-nav-to:#0d0b07;
+  --lx-text:#EAE8E2; --lx-text-warm:#e7dcc2; --lx-parch:#cabf9f;
+  --lx-parch-dim:#8c836b; --lx-muted:#9A9490; --lx-faint:#a89f88;
+  --lx-border:#2a2533; --lx-rule:rgba(216,169,62,0.14); --lx-rule-strong:rgba(216,169,62,0.30);
+  --lx-gold:#D8A93E; --lx-gold-bright:#F1CE74; --lx-gold-deep:#A07E2C; --lx-on-gold:#2a1e07;
+  --lx-gold-soft:rgba(216,169,62,0.08);
+  --lx-verd:#48B068; --lx-red:#C84848;
+  --cin:'Cinzel',Georgia,serif; --gar:'EB Garamond',Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--lx-bg); color:var(--lx-parch);
+  font-family:var(--gar); font-size:14px; overflow:hidden;
+  display:flex; flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+  /* The window is frameless, so nothing should feel text-selectable except
+     content. Selecting the chrome while dragging looks broken. */
+  user-select:none; cursor:default;
+}
+.eyebrow{font-family:var(--cin);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--lx-gold)}
+.label{font-family:var(--cin);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--lx-faint)}
+.hidden{display:none !important}
 
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-  .row { display: flex; align-items: center; gap: 12px; }
-  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-  .dot.on { background: var(--green); box-shadow: 0 0 10px rgba(72,176,104,.7); }
-  .dot.off { background: #4a4452; }
-  .dot.warn { background: var(--gold); box-shadow: 0 0 10px rgba(200,155,60,.6); }
-  .dot.err { background: var(--red); box-shadow: 0 0 10px rgba(200,72,72,.6); }
-  .status-title { font-weight: 600; }
-  .status-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+/* ---- title bar: ours to draw, and the window's only drag handle ---- */
+.bar{
+  display:flex;align-items:center;gap:9px;padding:10px 6px 10px 13px;flex:none;
+  background:linear-gradient(180deg,var(--lx-nav-from),var(--lx-nav-to));
+  border-bottom:1px solid var(--lx-rule);
+}
+.mark{width:20px;height:20px;border:1px solid var(--lx-gold-deep);border-radius:3px;flex:none;
+  display:grid;place-items:center;font-family:var(--cin);font-size:11px;color:var(--lx-gold);background:var(--lx-gold-soft)}
+.bar h1{font-family:var(--cin);font-size:13px;font-weight:700;color:var(--lx-text-warm);letter-spacing:.02em}
+.ver{font-family:var(--cin);font-size:8px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--lx-muted);border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px}
+.drag{flex:1;align-self:stretch}
+.wbtn{width:34px;height:26px;display:grid;place-items:center;border-radius:3px;color:var(--lx-muted);
+  font-family:system-ui,sans-serif;font-size:13px;cursor:pointer}
+.wbtn:hover{background:rgba(255,255,255,.07);color:var(--lx-text)}
+.wbtn.x:hover{background:#C84848;color:#fff}
 
-  .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; }
-  .track { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
-  .track .tick { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font-size: 12px; flex: none; }
-  .track .tick.on { background: rgba(72,176,104,.16); color: var(--green); }
-  .track .tick.off { background: #221d2a; color: #5a5462; }
-  .track .name { flex: 1; }
-  .track .meta { color: var(--muted); font-size: 12px; }
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:13px}
+.scroll::-webkit-scrollbar{width:8px}
+.scroll::-webkit-scrollbar-thumb{background:var(--lx-border);border-radius:4px}
+.scroll::-webkit-scrollbar-thumb:hover{background:var(--lx-border)}
 
-  .btn {
-    display: inline-block; width: 100%; text-align: center; cursor: pointer;
-    border-radius: 9px; padding: 11px 16px; font-weight: 600; font-size: 14px;
-    border: 1px solid var(--border); background: transparent; color: var(--text);
-    transition: background .15s, border-color .15s;
-  }
-  .btn:hover { background: var(--card2); }
-  .btn.primary { background: var(--gold); color: #09080A; border-color: var(--gold); }
-  .btn.primary:hover { filter: brightness(1.07); background: var(--gold); }
-  .btn + .btn { margin-top: 8px; }
+.card{background:linear-gradient(180deg,var(--lx-card-from),var(--lx-card-to));
+  border:1px solid var(--lx-rule);border-radius:6px;margin-bottom:11px;overflow:hidden}
+.chead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 13px;border-bottom:1px solid var(--lx-rule)}
 
-  .pairbox { text-align: center; }
-  .pairbox .code {
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 30px; letter-spacing: 4px;
-    color: var(--gold); background: var(--card2); border: 1px dashed var(--border);
-    border-radius: 10px; padding: 14px; margin: 12px 0 8px; cursor: pointer;
-    transition: border-color .15s;
-  }
-  .pairbox .code:hover { border-color: var(--gold); }
-  .btn.copy { width: auto; padding: 8px 22px; margin: 0 auto 4px; }
-  .pairbox .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
-  .pairbox .hint a { color: var(--gold); text-decoration: none; }
-  .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--border); border-top-color: var(--gold); border-radius:50%; animation: sp 1s linear infinite; vertical-align:-2px; margin-right:6px; }
-  @keyframes sp { to { transform: rotate(360deg); } }
-  .foot { color: var(--muted); font-size: 11px; text-align: center; margin-top: 6px; }
-  .hidden { display: none; }
+/* ---- hero ---- */
+.hero{padding:14px}
+.hrow{display:flex;align-items:center;gap:10px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--lx-muted)}
+.dot.on{background:var(--lx-verd);box-shadow:0 0 9px rgba(72,176,104,.65)}
+.dot.warn{background:var(--lx-gold);box-shadow:0 0 9px rgba(216,169,62,.6)}
+.dot.err{background:var(--lx-red);box-shadow:0 0 9px rgba(200,72,72,.6)}
+.htitle{font-family:var(--cin);font-size:15px;font-weight:700;color:var(--lx-text-warm)}
+.hsub{margin-top:5px;font-size:13px;color:var(--lx-parch-dim);font-style:italic}
+.hmeta{margin-top:11px;padding-top:10px;border-top:1px solid var(--lx-rule);display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.hmeta .n{font-family:var(--cin);font-size:14px;color:var(--lx-gold)}
+/* An empty value must not shout in gold like a real one. */
+.hmeta .n.dim{font-family:var(--gar);font-size:13px;font-style:italic;color:var(--lx-parch-dim)}
+
+/* ---- rows ---- */
+.row{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid rgba(216,169,62,.07)}
+.row:last-child{border-bottom:none}
+.tick{width:15px;height:15px;border-radius:3px;flex:none;display:grid;place-items:center;font-size:10px;font-weight:700}
+.tick.y{background:rgba(72,176,104,.14);border:1px solid rgba(72,176,104,.5);color:var(--lx-verd)}
+.tick.n{background:rgba(154,148,144,.08);border:1px solid var(--lx-border);color:var(--lx-muted)}
+.rname{font-family:var(--cin);font-size:12px;color:var(--lx-text);flex:1}
+.rmeta{font-size:12px;color:var(--lx-parch-dim);font-style:italic;text-align:right}
+.sw{width:32px;height:17px;border-radius:9px;flex:none;position:relative;cursor:pointer;transition:background .15s}
+.sw.y{background:linear-gradient(180deg,var(--lx-gold),var(--lx-gold-deep))}
+.sw.n{background:#221d17;border:1px solid var(--lx-border)}
+.sw i{position:absolute;top:2.5px;width:12px;height:12px;border-radius:50%;background:#f3ead6;transition:left .15s,right .15s}
+.sw.y i{right:2.5px} .sw.n i{left:2.5px;background:#6d6459}
+.sw.busy{opacity:.5;cursor:default}
+
+/* ---- captures ---- */
+.hl{display:flex;gap:7px;padding:11px 13px;flex-wrap:wrap}
+.pill{border:1px solid var(--lx-rule);border-radius:4px;padding:5px 9px;background:rgba(216,169,62,.04);min-width:64px}
+.pill .k{font-family:var(--cin);font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:var(--lx-faint);display:block}
+.pill .v{font-family:var(--cin);font-size:13px;color:var(--lx-gold-bright)}
+.pill.ok .v{color:var(--lx-verd)} .pill.bad .v{color:var(--lx-red)}
+/* Account totals read as the headline; the session row sits under them. */
+.pill.acct{background:rgba(216,169,62,.07);border-color:var(--lx-rule-strong)}
+.pill.acct .v{color:var(--lx-gold-bright)}
+#captures .pill .v{color:var(--lx-parch)}
+#account{padding-bottom:0}
+
+/* ---- feeds ---- */
+.feed{max-height:172px;overflow-y:auto}
+.feed::-webkit-scrollbar{width:8px}
+.feed::-webkit-scrollbar-thumb{background:var(--lx-border);border-radius:4px}
+.fi{display:flex;justify-content:space-between;gap:10px;padding:7px 13px;border-bottom:1px solid rgba(216,169,62,.07);font-size:12.5px}
+.fi:last-child{border-bottom:none}
+.fi .m{color:var(--lx-parch);user-select:text}
+.fi .a{color:var(--lx-muted);white-space:nowrap;font-style:italic;font-size:11.5px;flex:none}
+.fi.warn .m{color:var(--lx-gold)}
+.empty{padding:11px 13px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic}
+
+/* ---- codex+ teaser ---- */
+.plus{display:flex;align-items:center;gap:10px;padding:11px 13px;opacity:.55}
+.plus .t{font-family:var(--cin);font-size:12px;color:var(--lx-text);flex:1}
+.chip{font-family:var(--cin);font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--lx-muted);
+  border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px}
+
+/* ---- bounties ---- */
+.bnote{padding:10px 13px 4px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic;line-height:1.45}
+.bq{font-family:var(--cin);font-size:11px;color:var(--lx-gold-bright);min-width:56px;text-align:right;flex:none}
+
+/* ---- npcap warning ---- */
+.warncard{border-color:rgba(200,72,72,.4)}
+.warncard .chead{border-bottom-color:rgba(200,72,72,.3)}
+.warncard .eyebrow{color:var(--lx-red)}
+.wbody{padding:11px 13px;font-size:13px;color:var(--lx-parch);line-height:1.5}
+
+/* ---- actions + footer ---- */
+.acts{display:flex;gap:9px;margin-bottom:11px}
+.btn{flex:1;text-align:center;font-family:var(--cin);font-weight:600;font-size:11.5px;letter-spacing:.04em;
+  border-radius:4px;padding:10px 12px;cursor:pointer;border:1px solid var(--lx-rule-strong);
+  color:var(--lx-parch);background:transparent;transition:filter .15s,border-color .15s}
+.btn:hover{border-color:var(--lx-gold);filter:brightness(1.15)}
+.btn.p{background:linear-gradient(180deg,var(--lx-gold),var(--lx-gold-deep));color:var(--lx-on-gold);border-color:var(--lx-gold-deep)}
+.foot{font-size:12px;line-height:1.5;color:var(--lx-parch-dim);font-style:italic;
+  border-top:1px solid var(--lx-rule);padding-top:11px;padding-bottom:2px}
+.foot b{color:var(--lx-gold);font-style:normal;font-weight:500}
+.pair{font-family:var(--cin);font-size:19px;letter-spacing:.16em;color:var(--lx-gold-bright);
+  text-align:center;padding:9px;user-select:text;cursor:text}
 </style>
 </head>
 <body>
-  <div class="brand">
-    <div class="mark">C</div>
-    <div>
-      <h1>Codex Client</h1>
-      <div class="sub">albioncodex.com</div>
+
+<!-- The whole bar drags, except the window buttons. -->
+<div class="bar" id="bar">
+  <div class="mark">C</div>
+  <h1>Codex Client</h1>
+  <span class="ver" id="ver">alpha</span>
+  <div class="drag" id="dragzone"></div>
+  <div class="wbtn" id="btnMin" title="Minimise">&#8211;</div>
+  <div class="wbtn x" id="btnClose" title="Close">&#10005;</div>
+</div>
+
+<div class="scroll">
+
+  <div class="card warncard hidden" id="npcapCard">
+    <div class="chead"><span class="eyebrow">Npcap not installed</span></div>
+    <div class="wbody">
+      Capture cannot run without it. Install Npcap, then restart the Codex Client.
+      <div style="margin-top:10px"><span class="btn p" id="btnNpcap" style="display:inline-block;padding:8px 16px">Get Npcap</span></div>
     </div>
   </div>
 
-  <!-- Npcap required (shown only when the capture driver is missing) -->
-  <div id="npcapCard" class="card hidden" style="border-color: var(--red);">
-    <div class="row" style="margin-bottom: 8px;">
-      <div class="dot off" style="background: var(--red); box-shadow: 0 0 10px rgba(200,72,72,.6);"></div>
-      <div class="status-title" style="color: var(--red);">Npcap required</div>
+  <div class="card hero">
+    <div class="hrow">
+      <span class="dot" id="dot"></span>
+      <span class="htitle" id="statusTitle">Starting...</span>
     </div>
-    <p style="color: var(--muted); font-size: 12px; margin: 0 0 12px; line-height: 1.5;">
-      The Codex Client needs the free <b>Npcap</b> driver to read game traffic. Install it,
-      then restart this app.
-    </p>
-    <button id="npcapBtn" class="btn primary">Install Npcap</button>
+    <div class="hsub" id="statusSub"></div>
+    <div class="pair hidden" id="pairCode">----</div>
+    <div class="hmeta">
+      <span class="label" id="metaLabel">Character</span>
+      <span class="n" id="metaValue">-</span>
+    </div>
   </div>
 
-  <!-- Status -->
   <div class="card">
+    <div class="chead"><span class="eyebrow">What is tracked</span><span class="label" id="realm"></span></div>
     <div class="row">
-      <div id="dot" class="dot off"></div>
-      <div>
-        <div id="statusTitle" class="status-title">Checking...</div>
-        <div id="statusSub" class="status-sub"></div>
-      </div>
+      <span class="tick n" id="gameTick">&#10003;</span>
+      <span class="rname">Seeing your game</span>
+      <span class="rmeta" id="gameMeta">checking</span>
+    </div>
+    <div class="row">
+      <span class="tick n" id="boardTick">&#10003;</span>
+      <span class="rname">Destiny Board</span>
+      <span class="rmeta" id="boardMeta">not captured yet</span>
+    </div>
+    <div class="row">
+      <span class="tick n" id="marketTick">&#10003;</span>
+      <span class="rname">Market data</span>
+      <span class="sw n" id="marketSw"><i></i></span>
+    </div>
+    <div class="row">
+      <span class="tick n" id="aodpTick">&#10003;</span>
+      <span class="rname">Contribute to AODP</span>
+      <span class="sw n" id="aodpSw"><i></i></span>
     </div>
   </div>
 
-  <!-- Pairing (shown only while pairing) -->
-  <div id="pairCard" class="card pairbox hidden">
-    <div class="label">Link this PC</div>
-    <div id="pairCode" class="code" title="Click to copy">----</div>
-    <button id="copyBtn" class="btn copy">Copy code</button>
-    <div class="hint">
-      Enter this code at<br /><a id="pairLink" href="#" target="_blank">albioncodex.com/account/link</a>
-      <div style="margin-top:8px"><span class="spin"></span> waiting for you to confirm...</div>
-    </div>
-  </div>
-
-  <!-- Status -->
   <div class="card">
-    <div class="label">Status</div>
-    <div class="track">
-      <div id="gameTick" class="tick off">&#10003;</div>
-      <div class="name">Seeing Your Game</div>
-      <div id="gameMeta" class="meta">No</div>
-    </div>
-    <div class="track">
-      <div id="boardTick" class="tick off">&#10003;</div>
-      <div class="name">Destiny Board</div>
-      <div id="boardMeta" class="meta">Not captured yet</div>
-    </div>
-    <div class="track">
-      <div id="marketTick" class="tick off">&#10003;</div>
-      <div class="name">Market Data</div>
-      <div id="marketMeta" class="meta">Off</div>
-    </div>
-    <div class="track">
-      <div id="aodpTick" class="tick off">&#10003;</div>
-      <div class="name">Share with AODP</div>
-      <div id="aodpMeta" class="meta">Off</div>
-    </div>
+    <div class="chead"><span class="eyebrow">Your captures</span><span class="label" id="capturesScope">this session</span></div>
+    <div class="hl" id="account"></div>
+    <div class="hl" id="captures"></div>
   </div>
 
-  <!-- Third-party contribution. ON by default since 0.1.15, and disclosed here,
-       in the changelog and on /download rather than being a silent change. An
-       explicit opt-out is stored as an explicit false and is never overridden by
-       a later change to the default. -->
+  <div class="card hidden" id="bountyCard">
+    <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
+    <div class="bnote" id="bountyNote"></div>
+    <div id="bounties"></div>
+  </div>
+
+  <div class="card hidden" id="coverageCard">
+    <div class="chead"><span class="eyebrow">Your coverage</span><span class="label">last seen</span></div>
+    <div id="coverage"></div>
+  </div>
+
   <div class="card">
-    <div class="label">Share with AODP</div>
-    <div id="aodpText" style="font-size:13px;color:var(--muted);margin-bottom:10px;">
-      On by default. The prices you scan are also sent to the Albion Online Data
-      Project, the free public price API most Albion tools are built on - this
-      client is a fork of theirs and Codex reads from them heavily, so it
-      contributes back. Switch it off any time and the choice sticks. Your Codex
-      upload is unaffected either way, and always goes first: if AODP is down it
-      cannot cost you your own data.
-    </div>
-    <button id="aodpBtn" class="btn" onclick="toggleAodp()">Turn on</button>
+    <div class="chead"><span class="eyebrow">Recent activity</span></div>
+    <div class="feed" id="activity"><div class="empty">No activity yet - log in and change zones.</div></div>
   </div>
 
-  <!-- Activity (live feed of what is being sent to Codex) -->
+  <div class="card hidden" id="issuesCard">
+    <div class="chead"><span class="eyebrow">Issues</span></div>
+    <div class="feed" id="issues"></div>
+  </div>
+
   <div class="card">
-    <div class="label">Activity</div>
-    <div id="activity" style="max-height:180px;overflow-y:auto;">No activity yet - log in and change zones to start.</div>
+    <div class="plus">
+      <span class="t">Codex+</span>
+      <span class="chip">Coming soon</span>
+    </div>
   </div>
 
-  <!-- Capture Health (per-stream upload counts + failures) -->
-  <div id="healthCard" class="card hidden">
-    <div class="label">Capture Health</div>
-    <div id="health"></div>
+  <div class="acts" id="acts"></div>
+
+  <div class="foot">
+    Keep this running, then <b>log in to Albion or travel to another zone</b>.
+    Your Destiny Board uploads automatically &#8211; opening the board screen
+    in-game alone will not send it.
   </div>
 
-  <!-- Issues (problems with data sent through: failed uploads, anomalies) -->
-  <div id="issuesCard" class="card hidden" style="border-color:#6a4a1a;">
-    <div class="label" style="color:var(--gold);">Issues flagged</div>
-    <div id="issues" style="max-height:160px;overflow-y:auto;"></div>
-  </div>
-
-  <!-- Actions -->
-  <div id="actions"></div>
-
-  <div class="foot">Keep this running, then log in to Albion or travel to another zone. Your Destiny Board uploads automatically - opening the board screen in-game alone will not send it.</div>
+</div>
 
 <script>
-  const $ = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
 
-  // Guards the poll from overwriting the button mid-write (see render).
-  var aodpBusy = false;
+/* ---- frameless window controls -------------------------------------------
+   WebView2 has no `-webkit-app-region: drag`, so the host does the work:
+   codexDragWindow hands the click to Windows as if it landed on a caption,
+   which gives real snap and multi-monitor behaviour rather than an imitation
+   built from mouse deltas. Guarded because the same page is servable in a
+   plain browser for debugging, where the bindings do not exist. */
+function hostCall(name) {
+  try { if (window[name]) window[name](); } catch (e) {}
+}
+$('dragzone').addEventListener('mousedown', (e) => { if (e.button === 0) hostCall('codexDragWindow'); });
+$('bar').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest('.wbtn')) return;   // buttons must not drag
+  hostCall('codexDragWindow');
+});
+$('btnMin').addEventListener('click', () => hostCall('codexMinimize'));
+$('btnClose').addEventListener('click', () => hostCall('codexClose'));
+/* Double-click a title bar to maximise is a habit; there is no maximise here,
+   so swallow it rather than letting it select text. */
+$('bar').addEventListener('dblclick', (e) => e.preventDefault());
 
-  async function toggleAodp() {
-    if (aodpBusy) return;
-    const btn = $('aodpBtn');
-    const turningOn = btn.textContent === 'Turn on';
-    aodpBusy = true;
-    btn.disabled = true;
-    btn.textContent = turningOn ? 'Turning on...' : 'Turning off...';
-    try {
-      const r = await fetch('/api/aodp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ on: turningOn })
-      });
-      const j = await r.json();
-      if (j.error) {
-        // The switch itself took effect; only saving it failed. Say which, so
-        // nobody assumes the choice will still be there after a restart.
-        $('aodpText').textContent = 'Setting applied for this session, but it could not be saved: ' + j.error;
-      }
-    } catch (e) {
-      $('aodpText').textContent = 'Could not reach the client to change this setting.';
+/* ---- api ---------------------------------------------------------------- */
+async function api(path, opts) {
+  const r = await fetch(path, opts || {});
+  return r.json();
+}
+
+/* A toggle in flight must not be overwritten by the poll landing between the
+   click and the write, or the switch visibly flips back under the cursor. */
+const busy = { market: false, aodp: false };
+
+async function toggle(which, url) {
+  if (busy[which]) return;
+  const sw = $(which + 'Sw');
+  const turningOn = !sw.classList.contains('y');
+  busy[which] = true;
+  sw.classList.add('busy');
+  try {
+    const j = await api(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on: turningOn })
+    });
+    if (j && j.error) {
+      /* The setting IS live; only saving it failed. Say which, so nobody
+         assumes the choice will still be there after a restart. */
+      $('statusSub').textContent = 'Applied for this session, but could not be saved: ' + j.error;
     }
-    btn.disabled = false;
-    aodpBusy = false;
-    refresh();
+  } catch (e) {
+    $('statusSub').textContent = 'Could not reach the client to change that setting.';
   }
-
-  async function api(path, method) {
-    const r = await fetch(path, { method: method || 'GET' });
-    return r.json();
-  }
-
-  function render(s) {
-    // Npcap missing takes priority - it blocks everything else.
-    const npc = $('npcapCard');
-    if (s.npcapMissing) npc.classList.remove('hidden');
-    else npc.classList.add('hidden');
-
-    // status
-    const dot = $('dot');
-    if (s.pairing) {
-      dot.className = 'dot warn';
-      $('statusTitle').textContent = 'Linking this PC...';
-      $('statusSub').textContent = '';
-    } else if (s.linked && s.tokenRejected) {
-      dot.className = 'dot err';
-      $('statusTitle').textContent = 'Link broken - re-link this PC';
-      $('statusSub').textContent = 'This PC was unlinked on Codex, so uploads are being rejected. Link it again below.';
-    } else if (s.linked) {
-      dot.className = 'dot on';
-      $('statusTitle').textContent = 'Linked to Codex';
-      $('statusSub').textContent = s.character ? s.character : 'Log in or travel to another zone to capture your Destiny Board';
-    } else {
-      dot.className = 'dot off';
-      $('statusTitle').textContent = 'Not linked yet';
-      $('statusSub').textContent = 'Link this PC to upload your Destiny Board';
-    }
-
-    // pairing card
-    const pc = $('pairCard');
-    if (s.pairing && s.pairCode) {
-      pc.classList.remove('hidden');
-      $('pairCode').textContent = s.pairCode;
-      $('pairLink').href = s.pairUrl || '#';
-    } else {
-      pc.classList.add('hidden');
-    }
-
-    // seeing your game (BPF-filtered packets from your session)
-    $('gameTick').className = 'tick ' + (s.tracking ? 'on' : 'off');
-    $('gameMeta').textContent = s.tracking ? 'Yes' : 'No - is Albion running? Move or change zones';
-
-    // destiny board
-    $('boardTick').className = 'tick ' + (s.hasUploaded ? 'on' : 'off');
-    $('boardMeta').textContent = s.hasUploaded
-      ? (s.lastUploadNodes + ' nodes captured, ' + s.lastUploadAgo)
-      : (s.linked ? 'Change zones once to send it' : 'Link this PC first');
-
-    // market data
-    $('marketTick').className = 'tick ' + (s.marketOn ? 'on' : 'off');
-    $('marketMeta').textContent = s.marketOn ? 'On' : 'Off';
-
-    // AODP contribution. Skipped while a toggle is in flight so the poll cannot
-    // flip the button back under the player's cursor before the write lands.
-    if (!aodpBusy) {
-      $('aodpTick').className = 'tick ' + (s.aodpUpload ? 'on' : 'off');
-      $('aodpMeta').textContent = s.aodpUpload ? 'On' : 'Off';
-      $('aodpBtn').textContent = s.aodpUpload ? 'Turn off' : 'Turn on';
-      $('aodpBtn').className = 'btn' + (s.aodpUpload ? '' : ' primary');
-    }
-
-    // activity feed - live, human-readable record of what is sent to Codex
-    const act = $('activity');
-    if (s.activity && s.activity.length) {
-      act.innerHTML = s.activity.map(function(a) {
-        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
-          '<span style="color:var(--text);">' + a.msg + '</span>' +
-          '<span style="color:var(--muted);white-space:nowrap;">' + a.ago + '</span></div>';
-      }).join('');
-    } else {
-      act.textContent = 'No activity yet - log in and change zones to start.';
-    }
-
-    // capture health - per-stream sent / failed counts (+ queued/retrying)
-    const hc = $('healthCard');
-    if ((s.health && s.health.length) || s.queuedUploads) {
-      hc.classList.remove('hidden');
-      var queuedLine = s.queuedUploads
-        ? '<div class="track" style="padding:4px 0;"><div class="name">Pending delivery</div>' +
-          '<div class="meta"><span style="color:var(--gold);">' + s.queuedUploads + ' queued (retrying)</span></div></div>'
-        : '';
-      $('health').innerHTML = queuedLine + (s.health || []).map(function(x) {
-        const fail = x.failed ? ' <span style="color:var(--red);">' + x.failed + ' failed</span>' : '';
-        const last = x.lastSent ? ' &middot; <span style="color:var(--muted);">' + x.lastSent + '</span>' : '';
-        const errLine = x.lastErr ? '<div style="color:var(--red);font-size:11px;margin:-1px 0 5px;">' + x.lastErr + '</div>' : '';
-        return '<div class="track" style="padding:4px 0;"><div class="name">' + x.name + '</div>' +
-          '<div class="meta"><span style="color:var(--green);">' + x.sent + ' sent</span>' + fail + last + '</div></div>' + errLine;
-      }).join('');
-    } else { hc.classList.add('hidden'); }
-
-    // issues - flagged problems with data sent through (failed uploads, anomalies)
-    const ic = $('issuesCard');
-    if (s.issues && s.issues.length) {
-      ic.classList.remove('hidden');
-      $('issues').innerHTML = s.issues.map(function(a) {
-        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">' +
-          '<span style="color:var(--gold);">' + a.msg + '</span>' +
-          '<span style="color:var(--muted);white-space:nowrap;">' + a.ago + '</span></div>';
-      }).join('');
-    } else { ic.classList.add('hidden'); }
-
-    // actions
-    const a = $('actions');
-    a.innerHTML = '';
-    if ((!s.linked || s.tokenRejected) && !s.pairing) {
-      const b = document.createElement('div');
-      b.className = 'btn primary';
-      b.textContent = s.tokenRejected ? 'Re-link this PC' : 'Link this PC';
-      b.onclick = async () => { b.textContent = 'Starting...'; await api('/api/pair', 'POST'); refresh(); };
-      a.appendChild(b);
-    }
-    const open = document.createElement('div');
-    open.className = 'btn';
-    open.textContent = s.linked ? 'Manage devices on Codex' : 'Open Codex';
-    open.onclick = () => api('/api/open-codex', 'POST');
-    a.appendChild(open);
-  }
-
-  async function copyCode() {
-    const code = $('pairCode').textContent.trim();
-    if (!code || code === '----') return;
-    const btn = $('copyBtn');
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch (e) {
-      // Fallback for older engines: select the code so the user can Ctrl+C.
-      const r = document.createRange();
-      r.selectNodeContents($('pairCode'));
-      const sel = window.getSelection();
-      sel.removeAllRanges(); sel.addRange(r);
-    }
-    const orig = btn.textContent;
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  }
-  $('copyBtn').addEventListener('click', copyCode);
-  $('pairCode').addEventListener('click', copyCode);
-  $('npcapBtn').addEventListener('click', () => api('/api/open-npcap', 'POST'));
-
-  async function refresh() {
-    try { render(await api('/api/status')); } catch (e) {}
-  }
+  sw.classList.remove('busy');
+  busy[which] = false;
   refresh();
-  setInterval(refresh, 2000);
+}
+$('marketSw').addEventListener('click', () => toggle('market', '/api/market-upload'));
+$('aodpSw').addEventListener('click', () => toggle('aodp', '/api/aodp'));
+$('btnNpcap').addEventListener('click', () => api('/api/open-npcap', { method: 'POST' }));
+
+/* ---- render ------------------------------------------------------------- */
+function setTick(el, on) { el.className = 'tick ' + (on ? 'y' : 'n'); }
+function setSw(el, on)   { if (!el.classList.contains('busy')) el.className = 'sw ' + (on ? 'y' : 'n'); }
+function nf(n) { return (n || 0).toLocaleString('en-US'); }
+
+function feed(el, items, warn) {
+  if (!items || !items.length) return false;
+  el.replaceChildren(...items.map((a) => {
+    const row = document.createElement('div');
+    row.className = 'fi' + (warn ? ' warn' : '');
+    const m = document.createElement('span'); m.className = 'm'; m.textContent = a.msg;
+    const t = document.createElement('span'); t.className = 'a'; t.textContent = a.ago;
+    row.append(m, t);
+    return row;
+  }));
+  return true;
+}
+
+function render(s) {
+  $('ver').textContent = s.version || 'alpha';
+  $('npcapCard').classList.toggle('hidden', !s.npcapMissing);
+
+  // hero
+  const dot = $('dot');
+  if (s.pairing) {
+    dot.className = 'dot warn';
+    $('statusTitle').textContent = 'Linking this PC';
+    $('statusSub').textContent = 'Enter the code below on the page that opened in your browser.';
+  } else if (s.npcapMissing) {
+    dot.className = 'dot err';
+    $('statusTitle').textContent = 'Capture is off';
+    $('statusSub').textContent = 'Npcap is not installed.';
+  } else if (s.linked && s.tokenRejected) {
+    dot.className = 'dot err';
+    $('statusTitle').textContent = 'Link broken';
+    $('statusSub').textContent = 'This PC was unlinked on Codex, so uploads are being rejected. Link it again below.';
+  } else if (s.linked) {
+    dot.className = 'dot on';
+    $('statusTitle').textContent = 'Linked to Codex';
+    $('statusSub').textContent = s.tracking
+      ? 'Capturing. Your board and prices upload automatically.'
+      : 'Waiting for Albion. Log in or travel to another zone.';
+  } else {
+    dot.className = 'dot';
+    $('statusTitle').textContent = 'Not linked yet';
+    $('statusSub').textContent = 'Link this PC to upload your Destiny Board.';
+  }
+
+  const pc = $('pairCode');
+  pc.classList.toggle('hidden', !(s.pairing && s.pairCode));
+  if (s.pairing && s.pairCode) pc.textContent = s.pairCode;
+
+  // hero meta doubles as the character line, or the queue when one is draining
+  $('metaLabel').textContent = 'Character';
+  $('metaValue').textContent = s.character || (s.linked ? 'none captured yet' : 'not linked');
+  $('metaValue').className = s.character ? 'n' : 'n dim';
+
+  $('realm').textContent = s.server ? s.server : '';
+
+  setTick($('gameTick'), s.tracking);
+  $('gameMeta').textContent = s.tracking ? 'yes' : 'no - is Albion running?';
+
+  setTick($('boardTick'), s.hasUploaded);
+  $('boardMeta').textContent = s.hasUploaded
+    ? nf(s.lastUploadNodes) + ' nodes, ' + s.lastUploadAgo
+    : (s.linked ? 'change zones once to send it' : 'link this PC first');
+
+  setTick($('marketTick'), s.marketOn);
+  setSw($('marketSw'), s.marketOn);
+  setTick($('aodpTick'), s.aodpUpload);
+  setSw($('aodpSw'), s.aodpUpload);
+
+  // captures
+  const caps = $('captures');
+  const health = s.health || [];
+  /* Before anything has uploaded, a lone "Failed 0" pill reads as an error
+     display rather than an empty one. Say nothing has happened yet instead. */
+  if (!health.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = s.tracking
+      ? 'Nothing sent yet - browse a market or change zones.'
+      : 'Nothing sent yet - log in to Albion to start capturing.';
+    caps.replaceChildren(e);
+    caps.style.padding = '0';
+  } else {
+  caps.style.padding = '';
+  let failed = 0;
+  health.forEach((h) => { failed += h.failed || 0; });
+  const cells = health.map((h) => ({ k: h.name, v: nf(h.sent), cls: '' }));
+  cells.push({ k: 'Failed', v: nf(failed), cls: failed ? 'bad' : 'ok' });
+  caps.replaceChildren(...cells.map((c) => {
+    const p = document.createElement('span'); p.className = 'pill ' + c.cls;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = c.k;
+    const v = document.createElement('span'); v.className = 'v'; v.textContent = c.v;
+    p.append(k, v); return p;
+  }));
+  }
+
+  // feeds
+  if (!feed($('activity'), s.activity, false)) {
+    $('activity').innerHTML = '<div class="empty">No activity yet - log in and change zones.</div>';
+  }
+  const hasIssues = feed($('issues'), s.issues, true);
+  $('issuesCard').classList.toggle('hidden', !hasIssues);
+
+  // actions
+  const acts = $('acts');
+  acts.replaceChildren();
+  if (!s.pairing) {
+    const link = document.createElement('span');
+    link.className = 'btn p';
+    link.textContent = (!s.linked) ? 'Link this PC' : 'Re-link this PC';
+    link.onclick = async () => { link.textContent = 'Starting...'; await api('/api/pair', { method: 'POST' }); refresh(); };
+    acts.append(link);
+  }
+  const acct = document.createElement('span');
+  acct.className = 'btn';
+  acct.textContent = s.linked ? 'Manage devices' : 'Open Codex';
+  acct.onclick = () => api('/api/open-codex', { method: 'POST' });
+  acts.append(acct);
+}
+
+/* ---- account stats ------------------------------------------------------
+   A different cadence from the status tick on purpose. /api/status is local
+   state and costs nothing; this one is a round trip to Codex behind a cache,
+   so it is polled slowly and the host only refetches when its cache is over an
+   hour old. Renders nothing at all until data arrives, so an offline or
+   unpaired client simply shows the session numbers rather than an error. */
+function renderAccount(s) {
+  const acct = $('account');
+  const cov = $('coverage');
+  const covCard = $('coverageCard');
+
+  if (!s || !s.captures) {
+    acct.replaceChildren();
+    covCard.classList.add('hidden');
+    $('bountyCard').classList.add('hidden');
+    $('capturesScope').textContent = 'this session';
+    return;
+  }
+
+  $('capturesScope').textContent = 'all time / this session';
+
+  const c = s.captures;
+  const cells = [
+    { k: 'Prices', v: nf(c.pricesTotal) },
+    { k: 'Last 7d', v: nf(c.prices7d) },
+    { k: 'History', v: nf(c.historySeries) },
+    { k: 'Characters', v: nf(c.characters) },
+  ];
+  acct.replaceChildren(...cells.map((x) => {
+    const p = document.createElement('span'); p.className = 'pill acct';
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = x.k;
+    const v = document.createElement('span'); v.className = 'v'; v.textContent = x.v;
+    p.append(k, v); return p;
+  }));
+
+  renderBounties(s.bounties);
+
+  const cities = (s.cities || []).slice(0, 8);
+  if (!cities.length) {
+    covCard.classList.add('hidden');
+    return;
+  }
+  covCard.classList.remove('hidden');
+  cov.replaceChildren(...cities.map((city) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const name = document.createElement('span');
+    name.className = 'rname';
+    name.textContent = city.city;
+    const meta = document.createElement('span');
+    meta.className = 'rmeta';
+    meta.textContent = staleLabel(city.hours_stale) + ' · ' + city.server;
+    /* Amber past a day, red past a week. A player cannot act on "your prices
+       are old" without knowing how old, and colour is the fastest way to say
+       which city to walk to first. */
+    if (city.hours_stale >= 168) meta.style.color = 'var(--lx-red)';
+    else if (city.hours_stale >= 24) meta.style.color = 'var(--lx-gold)';
+    row.append(name, meta);
+    return row;
+  }));
+}
+
+/* Most wanted: what to scan next, and what it unlocks.
+   Hidden entirely when there is nothing to show - a realm we have not detected,
+   or one that has never been computed. An empty list would read as "nothing is
+   wanted", which is the opposite of true. */
+function renderBounties(b) {
+  const card = $('bountyCard');
+  const list = $('bounties');
+  const wanted = (b && b.wanted) || [];
+  if (!b || !wanted.length) {
+    card.classList.add('hidden');
+    return;
+  }
+
+  $('bountyScope').textContent = b.server || '';
+  $('bountyNote').textContent =
+    'Scan any of these in a market and you unlock pricing for the items below them, '
+    + 'for everyone on ' + (b.server || 'your realm') + '.';
+
+  list.replaceChildren(...wanted.slice(0, 6).map((w) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const name = document.createElement('span');
+    name.className = 'rname';
+    name.textContent = prettyItem(w.id);
+    const n = document.createElement('span');
+    n.className = 'bq';
+    n.textContent = nf(w.blocks);
+    const unit = document.createElement('span');
+    unit.className = 'rmeta';
+    unit.textContent = w.blocks === 1 ? 'item' : 'items';
+    row.append(name, n, unit);
+    return row;
+  }));
+  card.classList.remove('hidden');
+}
+
+/* The bounty ids are raw item ids (T4_ORE). The client has no name map for
+   arbitrary ids, so make them readable rather than shipping one: strip the tier
+   prefix into a label and title-case the rest. */
+function prettyItem(id) {
+  if (!id) return '';
+  const m = /^T(\d)_(.+)$/.exec(id);
+  const tier = m ? 'T' + m[1] + ' ' : '';
+  const rest = (m ? m[2] : id).replace(/_LEVEL(\d)/, '.$1').replace(/@\d$/, '');
+  const words = rest.split('_').map(function (w) {
+    return w.charAt(0) + w.slice(1).toLowerCase();
+  }).join(' ');
+  return tier + words;
+}
+
+function staleLabel(hours) {
+  if (hours == null) return 'unknown';
+  if (hours < 1) return 'just now';
+  if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.floor(hours / 24);
+  return days + (days === 1 ? ' day ago' : ' days ago');
+}
+
+async function refreshAccount() {
+  try { renderAccount(await api('/api/stats')); } catch (e) {}
+}
+
+async function refresh() {
+  try { render(await api('/api/status')); } catch (e) {}
+}
+refresh();
+refreshAccount();
+setInterval(refresh, 2000);
+setInterval(refreshAccount, 5 * 60 * 1000);
 </script>
 </body>
 </html>

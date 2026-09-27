@@ -147,16 +147,22 @@ func formatSilver(n int) string {
 // region label. Returns "" when undetected (e.g. offline replay) so the server
 // upserts don't overwrite a known region with a placeholder.
 func codexServerName(id int) string {
+	name := ""
 	switch id {
 	case 1:
-		return "americas"
+		name = "americas"
 	case 2:
-		return "asia"
+		name = "asia"
 	case 3:
-		return "europe"
-	default:
-		return ""
+		name = "europe"
 	}
+	// Record it for the panel. Every capture path routes through here, so this
+	// one line covers all of them without a new call site; the empty case is
+	// skipped so an offline replay cannot blank a realm we already detected.
+	if name != "" {
+		Status.setServer(name)
+	}
+	return name
 }
 
 // uploadMarketToCodex aggregates a batch of captured market orders into per-item

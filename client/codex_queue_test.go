@@ -22,13 +22,13 @@ func stubServer(t *testing.T, status int, retryAfter string) func() {
 	return func() { ConfigGlobal.CodexBaseURL = prev; srv.Close() }
 }
 
-func healthFor(stream string) streamHealthItem {
-	for _, h := range Status.snapshot().Health {
+func healthFor(stream string) StreamHealthItem {
+	for _, h := range Status.Snapshot().Health {
 		if h.Name == stream {
 			return h
 		}
 	}
-	return streamHealthItem{}
+	return StreamHealthItem{}
 }
 
 func TestQueueSuccessRunsOnOKAndCountsSent(t *testing.T) {
@@ -152,10 +152,10 @@ func TestQueueGivesUpAfterMaxTries(t *testing.T) {
 
 func TestShedPrefersOldestLowValue(t *testing.T) {
 	q := &codexUploadQueue{jobs: []*codexUploadJob{
-		{stream: "Destiny board"},               // high-value
+		{stream: "Destiny board"},                 // high-value
 		{stream: "Market prices", lowValue: true}, // low-value, oldest low -> shed this
-		{stream: "Sales"},                        // high-value
-		{stream: "Gold", lowValue: true},         // low-value, newer
+		{stream: "Sales"},                         // high-value
+		{stream: "Gold", lowValue: true},          // low-value, newer
 	}}
 	shed := q.shedOldestLowValueLocked()
 	if shed == nil || shed.stream != "Market prices" {

@@ -9,12 +9,12 @@ func TestTokenRejectedLifecycle(t *testing.T) {
 	Status = &ClientStatus{}
 	defer func() { Status = &ClientStatus{} }()
 
-	if Status.snapshot().TokenRejected {
+	if Status.Snapshot().TokenRejected {
 		t.Fatal("tokenRejected should start false")
 	}
 
 	recordUploadOutcome("Destiny board", 10, 401, nil)
-	snap := Status.snapshot()
+	snap := Status.Snapshot()
 	if !snap.TokenRejected {
 		t.Fatal("a 401 upload must set tokenRejected")
 	}
@@ -33,7 +33,7 @@ func TestTokenRejectedLifecycle(t *testing.T) {
 	// A second 401 must not spam another token issue.
 	recordUploadOutcome("Market prices", 5, 401, nil)
 	tokenIssues = 0
-	for _, is := range Status.snapshot().Issues {
+	for _, is := range Status.Snapshot().Issues {
 		if is.Kind == "token" {
 			tokenIssues++
 		}
@@ -44,7 +44,7 @@ func TestTokenRejectedLifecycle(t *testing.T) {
 
 	// An accepted upload proves the token works again (e.g. after re-pairing).
 	recordUploadOutcome("Destiny board", 10, 200, nil)
-	if Status.snapshot().TokenRejected {
+	if Status.Snapshot().TokenRejected {
 		t.Fatal("a 2xx upload must clear tokenRejected")
 	}
 }

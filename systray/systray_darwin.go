@@ -3,87 +3,28 @@
 package systray
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-
-	"github.com/ao-data/albiondata-client/client"
-	"github.com/ao-data/albiondata-client/icon"
-	"github.com/ao-data/albiondata-client/log"
 	"github.com/getlantern/systray"
 )
 
-var ConsoleHidden bool = false
+// trayTitle is empty on macOS: the icon sits in the menu bar and a text title
+// beside it just eats horizontal space.
+const trayTitle = ""
 
-const CanHideConsole = false
+// canHideConsole reports whether this platform can show/hide the console window.
+// macOS has no equivalent, so the tray hides that menu entry entirely.
+const canHideConsole = false
 
-func HideConsole() {
-	// Not supported on macOS
-}
+func hideConsole() {}
 
-func ShowConsole() {
-	// Not supported on macOS
-}
+func showConsole() {}
 
-func Run() {
-	systray.Run(onReady, onExit)
-}
+func toggleConsole() {}
 
-func onExit() {
-	// Cleanup if needed
-}
+func consoleActionTitle() string { return "" }
 
-func onReady() {
-	systray.SetIcon(icon.Data)
-	systray.SetTitle("") // Clear text since we have an icon now
-	systray.SetTooltip("Codex Client")
-
-	mStatus := systray.AddMenuItem(codexStatusTitle(), "Whether this PC is linked to your Codex account")
-	mStatus.Disable()
-	mPanel := systray.AddMenuItem("Open Control Panel", "Open the Codex Client window")
-	mAccount := systray.AddMenuItem("Manage devices on Codex", "Open your Codex account page in the browser")
-	systray.AddSeparator()
-	mOpenLog := systray.AddMenuItem("Open Log File", "Open the log file in default viewer")
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Close the Codex Client")
-
-	go func() {
-		for {
-			select {
-			case <-mPanel.ClickedCh:
-				client.OpenPanel()
-				mStatus.SetTitle(codexStatusTitle())
-
-			case <-mAccount.ClickedCh:
-				client.OpenBrowser(client.CodexAccountURL())
-
-			case <-mOpenLog.ClickedCh:
-				openLogFile()
-
-			case <-mQuit.ClickedCh:
-				fmt.Println("Requesting quit")
-				systray.Quit()
-				os.Exit(0)
-			}
-		}
-	}()
-}
-
-func openLogFile() {
-	// Try to find and open the log file
-	logFile := "albiondata-client.log"
-	
-	// Check current directory first
-	if _, err := os.Stat(logFile); err == nil {
-		absPath, _ := filepath.Abs(logFile)
-		cmd := exec.Command("open", absPath)
-		if err := cmd.Start(); err != nil {
-			log.Errorf("Failed to open log file: %v", err)
-		}
-		return
-	}
-	
-	// If no log file exists, show a message
-	log.Info("No log file found yet.")
+// Run starts the tray and blocks. On macOS this must be called on the main
+// thread (see main()), which is why the client runs in the goroutine there and
+// the tray does not.
+func Run(version string) {
+	systray.Run(func() { onReady(version) }, onExit)
 }

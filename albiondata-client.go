@@ -49,9 +49,9 @@ func main() {
 	// On other platforms, we do the opposite for backward compatibility.
 	if runtime.GOOS == "darwin" {
 		go runClient()
-		systray.Run() // This blocks on the main thread (required for macOS)
+		systray.Run(version) // This blocks on the main thread (required for macOS)
 	} else {
-		go systray.Run()
+		go systray.Run(version)
 		runClient()
 	}
 }

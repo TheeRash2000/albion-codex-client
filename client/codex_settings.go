@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,11 @@ type codexSettings struct {
 	// already turned them OFF. nil means unconfigured (take the default); an
 	// explicit false is honoured forever.
 	AODPUpload *bool `json:"aodp_upload,omitempty"`
+
+	// Contribute market prices scanned in-game to Codex. Same tri-state
+	// reasoning as AODPUpload: nil means unconfigured (take the flag default),
+	// an explicit false is honoured across restarts.
+	MarketUpload *bool `json:"market_upload,omitempty"`
 }
 
 // aodpUploadOrDefault resolves the tri-state: an explicit choice wins, absence
@@ -217,3 +223,64 @@ func applyStoredAODPSetting() {
 func AODPUploadEnabled() bool {
 	return strings.Contains(ConfigGlobal.PublicIngestBaseUrls, AODPPlaceholderURL)
 }
+
+// ---------------------------------------------------------------------------
+// Market capture toggle
+// ---------------------------------------------------------------------------
+//
+// The browser panel could only ever READ this (it showed "Market Data: On/Off"
+// with no way to change it); `-codex-market` was the sole control surface, which
+// meant turning capture off required editing a shortcut. The tray UI makes it a
+// checkbox, so like the AODP toggle it now needs to survive a restart.
+
+// SetMarketUpload turns Codex market capture on or off, persists the choice, and
+// applies it to the live config.
+//
+// Applying it live is safe because every capture path reads
+// ConfigGlobal.CodexMarketUpload at send time (via marketUploadEnabled), so the
+// next browse already respects the new value - no restart, which matters because
+// the natural moment to toggle this is mid-session.
+func SetMarketUpload(on bool) error {
+	s := LoadCodexSettings()
+	// A pointer for the same reason AODPUpload is one: a plain bool cannot tell
+	// "never chose" from "chose false", so an explicit opt-out must be recorded
+	// as an explicit value or a future default change would silently undo it.
+	s.MarketUpload = &on
+	if err := SaveCodexSettings(s); err != nil {
+		return err
+	}
+	ConfigGlobal.CodexMarketUpload = on
+	return nil
+}
+
+// applyStoredMarketSetting is called once at startup, after flags and env.
+//
+// Unlike the AODP setting (a list, so stored and CLI values compose), this is a
+// plain bool where the two can genuinely conflict. An explicitly PASSED
+// `-codex-market` wins: someone who types a flag means it for that launch, and a
+// stored value silently overriding it would make the flag look broken. Absent
+// that flag, the stored choice wins over the built-in default.
+func applyStoredMarketSetting() {
+	if flagWasSet("codex-market") {
+		return
+	}
+	if v := LoadCodexSettings().MarketUpload; v != nil {
+		ConfigGlobal.CodexMarketUpload = *v
+	}
+}
+
+// flagWasSet reports whether the named flag was actually present on the command
+// line, as opposed to sitting at its default.
+func flagWasSet(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
+
+// MarketUploadEnabled reports whether Codex market capture is currently on.
+// Reads the live config, so it stays honest when the flag was passed.
+func MarketUploadEnabled() bool { return marketUploadEnabled() }

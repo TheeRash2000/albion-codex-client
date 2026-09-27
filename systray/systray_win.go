@@ -3,15 +3,16 @@
 package systray
 
 import (
-	"fmt"
-	"os"
-
-	"github.com/ao-data/albiondata-client/client"
-
-	"github.com/ao-data/albiondata-client/icon"
 	"github.com/getlantern/systray"
 	"github.com/gonutz/w32"
 )
+
+// trayTitle is shown next to the icon where the platform supports it. Windows
+// tray icons show only the tooltip, so this is effectively cosmetic here.
+const trayTitle = "Codex Client"
+
+// canHideConsole reports whether this platform can show/hide the console window.
+const canHideConsole = true
 
 var consoleHidden bool
 
@@ -23,7 +24,6 @@ func hideConsole() {
 			w32.ShowWindowAsync(console, w32.SW_HIDE)
 		}
 	}
-
 	consoleHidden = true
 }
 
@@ -35,70 +35,27 @@ func showConsole() {
 			w32.ShowWindowAsync(console, w32.SW_SHOW)
 		}
 	}
-
 	consoleHidden = false
 }
 
-func GetActionTitle() string {
+func toggleConsole() {
 	if consoleHidden {
-		return "Show Console"
-	} else {
-		return "Hide Console"
+		showConsole()
+		return
 	}
+	hideConsole()
 }
 
-func Run() {
-	systray.Run(onReady, onExit)
+func consoleActionTitle() string {
+	if consoleHidden {
+		return "Show console"
+	}
+	return "Hide console"
 }
 
-func onExit() {
-
-}
-
-func onReady() {
-	// Don't hide the console automatically
-	// Unless started from the scheduled task or with the parameter
-	// People think it is crashing
-	if client.ConfigGlobal.Minimize {
-		hideConsole()
-	}
-	systray.SetIcon(icon.Data)
-	systray.SetTitle("Codex Client")
-	systray.SetTooltip("Codex Client - destiny board capture for albioncodex.com")
-
-	mStatus := systray.AddMenuItem(codexStatusTitle(), "Whether this PC is linked to your Codex account")
-	mStatus.Disable()
-	systray.AddSeparator()
-
-	mPanel := systray.AddMenuItem("Open Control Panel", "Open the Codex Client window")
-	mAccount := systray.AddMenuItem("Manage devices on Codex", "Open your Codex account page in the browser")
-	systray.AddSeparator()
-
-	mConHideShow := systray.AddMenuItem(GetActionTitle(), "Show/Hide Console")
-	mQuit := systray.AddMenuItem("Quit", "Close the Codex Client")
-
-	for {
-		select {
-		case <-mQuit.ClickedCh:
-			fmt.Println("Requesting quit")
-			systray.Quit()
-			os.Exit(0)
-
-		case <-mPanel.ClickedCh:
-			client.OpenPanel()
-			mStatus.SetTitle(codexStatusTitle())
-
-		case <-mAccount.ClickedCh:
-			client.OpenBrowser(client.CodexAccountURL())
-
-		case <-mConHideShow.ClickedCh:
-			if consoleHidden {
-				showConsole()
-				mConHideShow.SetTitle(GetActionTitle())
-			} else {
-				hideConsole()
-				mConHideShow.SetTitle(GetActionTitle())
-			}
-		}
-	}
+// Run starts the tray and blocks. version is passed in rather than read from the
+// client package because on every platform except macOS the tray starts BEFORE
+// the client does, so a package-level version variable would still be empty.
+func Run(version string) {
+	systray.Run(func() { onReady(version) }, onExit)
 }

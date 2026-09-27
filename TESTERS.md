@@ -17,29 +17,47 @@ else is uploaded.
 
 ## Link your PC and run it
 
-4. Double-click **`codex-client.exe`**. A small "Codex Client" window opens.
+4. Double-click **`codex-client.exe`**. It starts in the background and puts a
+   **Codex icon in your system tray** (bottom-right, by the clock - you may need
+   to click the small arrow to see hidden icons). There is no window; everything
+   is on the icon's menu.
    - Windows may say it's an unrecognized app - click **More info → Run anyway**.
      (It's unsigned; that warning is expected for a small tool.)
-5. Click **Link this PC** → **Copy code** → the link page opens in your browser →
-   paste the code → **Confirm**. The window flips to "Linked".
+5. Click the tray icon and choose **Link this PC**. The code is copied to your
+   clipboard and the link page opens in your browser - paste it there and
+   **Confirm**. The menu's top line flips to "Status: linked to Codex".
+   - If the code did not copy, the notification shows it so you can type it. It
+     is also on the menu item itself while linking, and clicking that item again
+     copies it.
 6. With the app **still running**, log in to Albion (or, if you're already in,
-   log out to character select and back in). Your board uploads - the window
-   shows "… nodes, just now". Open your Destiny Board on the site to see it.
+   log out to character select and back in). Your board uploads - the menu shows
+   "Destiny Board: … nodes, just now". Open your Destiny Board on the site to
+   see it.
 
 ## Good to know
 
 - It must be running **before** you log in - the game only sends the full board
   once, at login.
-- It lives in your **system tray** (bottom-right, by the clock). Right-click the
-  icon to reopen the window or quit.
+- It lives in your **system tray** (bottom-right, by the clock). The icon's menu
+  is the whole app: status, whether it can see your game, your last board upload,
+  what has been captured (**Capture health** / **Recent activity** / **Issues**),
+  the market and AODP switches, **Link this PC**, and **Quit**.
+- Launching it a second time will not open anything - one copy runs at a time,
+  and it tells you to look at the tray icon.
+- If it ever seems to be using too much memory, click **Save memory report** on
+  the menu and send me the file it names.
 - It does **not** modify the game. It only reads network packets, which Albion's
   developers have said is fine.
 
 ## Linux (alpha)
 
 The Linux build is a command-line alpha: same capture and upload pipeline, no
-tray window, no autostart, no auto-update (you download new builds yourself).
-The control panel still works - it opens in your normal browser.
+tray, no autostart, no auto-update (you download new builds yourself).
+
+From 0.1.16 there is **no control panel on Linux either** - it was a local web
+page, and the Windows client replaced it with a native tray menu that Linux
+cannot show without desktop libraries the build deliberately does not require.
+Status comes from the terminal output. Pair with `--codex-pair`.
 
 1. **No Npcap needed** - Linux uses libpcap, which your distro already has.
    (Only building from source needs `libpcap-dev`.)

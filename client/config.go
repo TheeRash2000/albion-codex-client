@@ -86,6 +86,7 @@ type config struct {
 	CodexToken        string
 	CodexPair         bool
 	CodexMarketUpload bool
+	CodexOpenPanel    bool
 	AdminMode         bool
 }
 
@@ -101,15 +102,19 @@ func (config *config) SetupFlags() {
 	config.setupDebugFlags()
 	config.setupCommonFlags()
 	config.setupCodexFlags()
+	config.setupPanelFlag()
 
 	flag.Parse()
 
 	config.applyCodexEnv()
 
-	// The panel's AODP checkbox, persisted across restarts. Applied after flags
-	// so it composes with an explicit -i rather than replacing it: the stored
+	// The tray checkboxes, persisted across restarts. Applied after flags so the
+	// AODP one composes with an explicit -i rather than replacing it: the stored
 	// setting only ever ADDS our placeholder to whatever targets are configured.
+	// The market one instead defers to an explicitly passed -codex-market, since
+	// a bool cannot compose. See codex_settings.go for both.
 	applyStoredAODPSetting()
+	applyStoredMarketSetting()
 
 	if config.OfflinePath != "" {
 		config.Offline = true
@@ -456,4 +461,17 @@ func (config *config) setupDebugOperations() {
 		log.Debugf("[%v] operation: [%v]%v", verb, number, OperationType(number))
 	}
 
+}
+
+// setupPanelFlag adds the one flag that is purely a UI convenience: open the
+// panel window at startup instead of waiting for the tray. Useful for support
+// ("run it with -panel and tell me what the window says") and for anyone who
+// wants the window up the moment the client launches.
+func (config *config) setupPanelFlag() {
+	flag.BoolVar(
+		&config.CodexOpenPanel,
+		"panel",
+		false,
+		"Open the Codex Client panel window on start (normally opened from the tray).",
+	)
 }

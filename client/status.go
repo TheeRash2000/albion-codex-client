@@ -25,6 +25,12 @@ type ClientStatus struct {
 	// npcapMissing is set at startup when the capture driver is not installed.
 	npcapMissing bool
 
+	// server is the realm detected from the player's own packets ("europe",
+	// "americas", "asia"). Shown in the panel so a player can confirm the client
+	// is watching the region they think they are on before wondering why their
+	// prices look wrong.
+	server string
+
 	// tokenRejected is set when Codex answers 401 to the saved device token -
 	// i.e. the device was revoked/removed on the website. The client still HAS a
 	// token (so CodexLinked() is true), but it is dead: the panel must stop
@@ -228,40 +234,60 @@ func (s *ClientStatus) setPairing(active bool, code, url string) {
 	s.pairURL = url
 }
 
+// setServer records the detected realm. Called from codexServerName, so it runs
+// on the capture path and must stay cheap; it no-ops when unchanged so a busy
+// market browse is not taking the write lock on every order.
+func (s *ClientStatus) setServer(name string) {
+	s.mu.RLock()
+	same := s.server == name
+	s.mu.RUnlock()
+	if same {
+		return
+	}
+	s.mu.Lock()
+	s.server = name
+	s.mu.Unlock()
+}
+
 func (s *ClientStatus) setNpcapMissing(v bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.npcapMissing = v
 }
 
-// snapshot returns a copy of the current status for rendering.
-type statusSnapshot struct {
-	Linked          bool   `json:"linked"`
-	TokenRejected   bool   `json:"tokenRejected"`
-	Tracking        bool   `json:"tracking"`
-	Character       string `json:"character"`
-	LastUploadNodes int    `json:"lastUploadNodes"`
-	LastUploadAgo   string `json:"lastUploadAgo"`
-	LastUploadOK    bool   `json:"lastUploadOk"`
-	HasUploaded     bool   `json:"hasUploaded"`
-	MarketOn        bool   `json:"marketOn"`
-	AodpUpload      bool   `json:"aodpUpload"`
-	Pairing         bool   `json:"pairing"`
-	PairCode        string `json:"pairCode"`
-	PairURL         string `json:"pairUrl"`
-	NpcapMissing    bool   `json:"npcapMissing"`
-	QueuedUploads   int    `json:"queuedUploads"`
-	Activity        []activityItem `json:"activity"`
-	Health          []streamHealthItem `json:"health"`
-	Issues          []issueItem        `json:"issues"`
+// StatusSnapshot is a point-in-time copy of the client state, rendered by the
+// tray UI. Exported because the systray package is the only consumer now that
+// the browser control panel is gone; the JSON tags are kept so the same struct
+// can still be marshalled for diagnostics.
+type StatusSnapshot struct {
+	Linked          bool               `json:"linked"`
+	TokenRejected   bool               `json:"tokenRejected"`
+	Tracking        bool               `json:"tracking"`
+	Character       string             `json:"character"`
+	LastUploadNodes int                `json:"lastUploadNodes"`
+	LastUploadAgo   string             `json:"lastUploadAgo"`
+	LastUploadOK    bool               `json:"lastUploadOk"`
+	HasUploaded     bool               `json:"hasUploaded"`
+	MarketOn        bool               `json:"marketOn"`
+	AodpUpload      bool               `json:"aodpUpload"`
+	Pairing         bool               `json:"pairing"`
+	PairCode        string             `json:"pairCode"`
+	PairURL         string             `json:"pairUrl"`
+	NpcapMissing    bool               `json:"npcapMissing"`
+	Server          string             `json:"server"`
+	Version         string             `json:"version"`
+	QueuedUploads   int                `json:"queuedUploads"`
+	Activity        []ActivityItem     `json:"activity"`
+	Health          []StreamHealthItem `json:"health"`
+	Issues          []IssueItem        `json:"issues"`
 }
 
-type activityItem struct {
+type ActivityItem struct {
 	Ago string `json:"ago"`
 	Msg string `json:"msg"`
 }
 
-type streamHealthItem struct {
+type StreamHealthItem struct {
 	Name     string `json:"name"`
 	Sent     int    `json:"sent"`
 	Failed   int    `json:"failed"`
@@ -269,13 +295,16 @@ type streamHealthItem struct {
 	LastErr  string `json:"lastErr,omitempty"`
 }
 
-type issueItem struct {
+type IssueItem struct {
 	Ago  string `json:"ago"`
 	Kind string `json:"kind"`
 	Msg  string `json:"msg"`
 }
 
-func (s *ClientStatus) snapshot() statusSnapshot {
+// Snapshot returns a copy of the current status for rendering. Safe from any
+// goroutine: it takes a read lock and copies everything it returns, so a caller
+// never holds a reference into the live feeds.
+func (s *ClientStatus) Snapshot() StatusSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -284,7 +313,7 @@ func (s *ClientStatus) snapshot() statusSnapshot {
 		tracking = time.Since(time.Unix(0, ls)) < trackingWindow
 	}
 
-	snap := statusSnapshot{
+	snap := StatusSnapshot{
 		Linked:          CodexLinked(),
 		TokenRejected:   s.tokenRejected,
 		Tracking:        tracking,
@@ -298,6 +327,8 @@ func (s *ClientStatus) snapshot() statusSnapshot {
 		PairCode:        s.pairCode,
 		PairURL:         s.pairURL,
 		NpcapMissing:    s.npcapMissing,
+		Server:          s.server,
+		Version:         version,
 		QueuedUploads:   codexQueueDepth(),
 	}
 	if !s.lastUploadAt.IsZero() {
@@ -305,7 +336,7 @@ func (s *ClientStatus) snapshot() statusSnapshot {
 	}
 	// activity, most recent first
 	for i := len(s.activity) - 1; i >= 0; i-- {
-		snap.Activity = append(snap.Activity, activityItem{Ago: humanizeSince(s.activity[i].at), Msg: s.activity[i].msg})
+		snap.Activity = append(snap.Activity, ActivityItem{Ago: humanizeSince(s.activity[i].at), Msg: s.activity[i].msg})
 	}
 	// per-stream health, name-sorted for a stable panel order
 	hnames := make([]string, 0, len(s.streams))
@@ -315,7 +346,7 @@ func (s *ClientStatus) snapshot() statusSnapshot {
 	sort.Strings(hnames)
 	for _, n := range hnames {
 		h := s.streams[n]
-		item := streamHealthItem{Name: n, Sent: h.sent, Failed: h.failed}
+		item := StreamHealthItem{Name: n, Sent: h.sent, Failed: h.failed}
 		if !h.lastSent.IsZero() {
 			item.LastSent = humanizeSince(h.lastSent)
 		}
@@ -326,7 +357,7 @@ func (s *ClientStatus) snapshot() statusSnapshot {
 	}
 	// issues, most recent first
 	for i := len(s.issues) - 1; i >= 0; i-- {
-		snap.Issues = append(snap.Issues, issueItem{Ago: humanizeSince(s.issues[i].at), Kind: s.issues[i].kind, Msg: s.issues[i].msg})
+		snap.Issues = append(snap.Issues, IssueItem{Ago: humanizeSince(s.issues[i].at), Kind: s.issues[i].kind, Msg: s.issues[i].msg})
 	}
 	return snap
 }

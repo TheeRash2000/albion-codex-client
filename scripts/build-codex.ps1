@@ -58,7 +58,37 @@ $env:CGO_LDFLAGS = "-L$sdk\Lib\x64"
 
 Set-Location $repo
 Remove-Item 'codex-client.exe~' -ErrorAction SilentlyContinue
-& $go build -ldflags "-X main.version=$Version" -o codex-client.exe albiondata-client.go
+
+# Exe resources: the Codex icon (Explorer, taskbar, pinned shortcuts) and the
+# file properties, from winres/winres.json. `go build` links any
+# rsrc_windows_*.syso in the main package directory, so this must run first.
+# Without it the exe carries no icon at all and Windows shows its generic one.
+# Pinned to the version the upstream build-windows.sh uses.
+$winres = (Get-Command go-winres -ErrorAction SilentlyContinue).Source
+if (-not $winres) {
+  & $go install github.com/tc-hib/go-winres@v0.3.1
+  if ($LASTEXITCODE -ne 0) { throw "go-winres install failed ($LASTEXITCODE)" }
+  $winres = Join-Path (& $go env GOPATH) 'bin\go-winres.exe'
+}
+Remove-Item 'rsrc_windows_*.syso' -ErrorAction SilentlyContinue
+$winresArgs = @('make', '--in', 'winres/winres.json', '--arch', 'amd64', '--out', 'rsrc')
+# Stamp the exe properties with the release version when it is numeric
+# (e.g. 0.1.17); "dev" builds keep the 0.0.0.0 in winres.json.
+# Release tags look like "alpha-0.1.16"; the file properties need the numbers.
+$numericVersion = $Version -replace '^alpha-', ''
+if ($numericVersion -match '^\d+(\.\d+){0,3}$') {
+  $winresArgs += @('--product-version', $numericVersion, '--file-version', $numericVersion)
+}
+& $winres @winresArgs
+if ($LASTEXITCODE -ne 0) { throw "go-winres failed ($LASTEXITCODE)" }
+if (-not (Test-Path "$repo\rsrc_windows_amd64.syso")) { throw "go-winres did not produce rsrc_windows_amd64.syso" }
+Write-Host "Embedded exe resources (icon, version info)" -ForegroundColor Green
+
+# Build the PACKAGE (.), not the file: `go build albiondata-client.go` compiles
+# a file list and silently skips .syso files, which is why earlier builds had no
+# icon even though winres.json existed. The main package is that one file, so
+# the result is otherwise identical.
+& $go build -ldflags "-X main.version=$Version" -o codex-client.exe .
 if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
 $size = [math]::Round((Get-Item "$repo\codex-client.exe").Length / 1MB, 1)

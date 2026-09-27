@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"os/exec"
-	"runtime"
 
+	"github.com/ao-data/albiondata-client/icon"
 	"github.com/ao-data/albiondata-client/log"
 )
 
@@ -18,8 +16,11 @@ var panelHTML []byte
 
 var panelURL string
 
-// StartPanel serves the local control panel and opens it as an app window. It is
-// best-effort: capture continues regardless of whether the window opened.
+// StartPanel serves the local control panel page and its JSON API.
+//
+// It does NOT open a window. The tray does that via OpenPanel, so the client
+// runs with no UI process at all until the user asks for one. Best-effort:
+// capture continues regardless of whether the server started.
 func StartPanel() {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -27,7 +28,6 @@ func StartPanel() {
 		return
 	}
 	panelURL = fmt.Sprintf("http://127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
-	writePanelURL(panelURL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -38,11 +38,27 @@ func StartPanel() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(panelHTML)
 	})
+	// The Codex mark as the page icon. Without it the page falls back to the
+	// generic globe in any browser or app window that shows the favicon.
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(icon.ICO)
+	})
+	// Account stats, served from cache. The page polls this far less often than
+	// /api/status, and a stale-cache refresh is single-flighted and backgrounded,
+	// so a burst of requests here can never become a burst of round trips to
+	// Codex. Answers 200 with a null body when nothing has been fetched yet,
+	// which the page renders as session-only numbers rather than as an error.
+	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
+		RefreshClientStatsIfStale()
+		writeJSON(w, CachedClientStats())
+	})
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, Status.snapshot())
+		writeJSON(w, Status.Snapshot())
 	})
 	mux.HandleFunc("/api/pair", func(w http.ResponseWriter, r *http.Request) {
-		code, url, err := StartPanelPairing()
+		code, url, err := StartUIPairing()
 		if err != nil {
 			w.WriteHeader(http.StatusBadGateway)
 			writeJSON(w, map[string]string{"error": "could not reach Codex"})
@@ -72,6 +88,26 @@ func StartPanel() {
 		}
 		writeJSON(w, map[string]bool{"on": AODPUploadEnabled()})
 	})
+	// Toggle Codex market capture. Same shape as /api/aodp: the setting is
+	// applied live and persisted, and a persistence failure is reported rather
+	// than swallowed - a switch that silently forgets its position after a
+	// restart is worse than one that says it could not save.
+	mux.HandleFunc("/api/market-upload", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			On bool `json:"on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]string{"error": "bad request"})
+			return
+		}
+		if err := SetMarketUpload(body.On); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(w, map[string]interface{}{"on": MarketUploadEnabled(), "error": "could not save the setting"})
+			return
+		}
+		writeJSON(w, map[string]bool{"on": MarketUploadEnabled()})
+	})
 	mux.HandleFunc("/api/open-codex", func(w http.ResponseWriter, r *http.Request) {
 		OpenBrowser(CodexAccountURL())
 		writeJSON(w, map[string]bool{"ok": true})
@@ -82,51 +118,10 @@ func StartPanel() {
 	})
 
 	go func() { _ = http.Serve(ln, mux) }()
-	log.Infof("Control panel running at %s", panelURL)
-	openPanelWindow(panelURL)
-}
-
-// PanelURL returns the running control-panel URL, or "" if it never started.
-func PanelURL() string { return panelURL }
-
-// OpenPanel re-opens the control-panel window (e.g. from the tray).
-func OpenPanel() {
-	if panelURL != "" {
-		openPanelWindow(panelURL)
-	}
+	log.Infof("Control panel server ready at %s", panelURL)
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
-}
-
-// openPanelWindow opens the panel as a chromeless app window via Edge or Chrome
-// (--app mode), falling back to the default browser if neither is found.
-func openPanelWindow(url string) {
-	if runtime.GOOS == "windows" {
-		for _, browser := range appModeBrowsers() {
-			if fileExists(browser) {
-				cmd := exec.Command(browser, "--app="+url, "--window-size=460,640")
-				if err := cmd.Start(); err == nil {
-					return
-				}
-			}
-		}
-	}
-	OpenBrowser(url)
-}
-
-func appModeBrowsers() []string {
-	return []string{
-		`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-		`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
-		`C:\Program Files\Google\Chrome\Application\chrome.exe`,
-		`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
-	}
-}
-
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ao-data/albiondata-client/log"
+	"github.com/ao-data/albiondata-client/notification"
 )
 
 var version string
@@ -57,19 +58,16 @@ func (client *Client) Run() error {
 		os.Exit(0)
 
 	} else {
-		// Single instance: if a Codex Client is already running, reopen its window
-		// and exit instead of starting a duplicate (duplicates caused the multiple
-		// panel windows and the linked/not-linked confusion).
+		// Single instance: only one client may run at a time.
+		//
+		// This used to reopen the running instance's browser window from a saved
+		// URL, which meant every duplicate launch spawned ANOTHER Edge/Chrome app
+		// process against the same client. With the tray there is nothing to
+		// reopen - the icon is already there - so a duplicate launch tells the
+		// player where to look and exits.
 		if !acquireSingleInstance() {
-			// Only one client may run at a time. Rather than silently exit (which
-			// looks like "nothing happened" and makes people relaunch), reopen the
-			// already-running instance's control-panel window using the URL it saved.
-			if u := readPanelURL(); u != "" {
-				log.Info("Codex Client is already running; reopening its window.")
-				openPanelWindow(u)
-			} else {
-				log.Info("Codex Client is already running; this duplicate launch is exiting (no second window).")
-			}
+			log.Info("Codex Client is already running; look for the Codex icon in the system tray.")
+			notification.Push("Codex Client is already running - look for the icon in your system tray.")
 			return nil
 		}
 
@@ -90,17 +88,22 @@ func (client *Client) Run() error {
 		// and self-update (checksum-verified) when a newer build ships, then restart.
 		startCodexUpdater(version)
 
-		// The control panel is the client's face: a small window with linked
-		// status, what's tracked, last upload, and a Link button.
+		// The local panel server. The window itself is opened from the tray, or
+		// now if -panel was passed, or automatically when the client has never
+		// been linked - a first-time user has no reason to know the tray icon is
+		// where linking lives, and the old panel opened itself for that reason.
 		StartPanel()
+		if ConfigGlobal.CodexOpenPanel || !CodexLinked() {
+			OpenPanel()
+		}
 
 		// Capture needs the Npcap driver. Without it pcap.OpenLive panics, so if
-		// it's missing we surface that in the panel and hold here rather than start
+		// it is missing we surface that in the tray and hold here rather than start
 		// capture. (The exe still runs - gopacket loads wpcap.dll at runtime.)
 		if !npcapInstalled() {
 			Status.setNpcapMissing(true)
-			log.Error("Npcap is not installed. Install it from the Codex Client window, then restart the app.")
-			select {} // keep the panel + tray alive; Quit from the tray exits
+			log.Error("Npcap is not installed. Install it from the Codex Client tray menu, then restart the app.")
+			select {} // keep the tray alive; Quit from the tray exits
 		}
 
 		// Admin mode: point recording at a fresh rotating file before capture starts.
