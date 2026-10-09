@@ -53,6 +53,9 @@ func (op operationJoinResponse) Process(state *albionState) {
 		// The new character's board uploads when its own event 151 arrives.
 		Status.switchCharacter(op.CharacterName)
 		dropPendingBoard()
+		// Same for a held market browse: it was seen by the previous character in a
+		// zone we never learned, so it must not be flushed under the new location.
+		dropPendingMarket()
 		return
 	}
 

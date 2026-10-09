@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ao-data/albiondata-client/notification"
 )
 
 // ClientStatus is the live state the control panel reads. A single shared
@@ -86,6 +88,17 @@ func (s *ClientStatus) recordSent(stream string, n int) {
 	h := s.streamLocked(stream)
 	h.sent += n
 	h.lastSent = time.Now()
+}
+
+// streamStats returns one stream's last accepted upload (zero if none this run)
+// and its failed-upload count, for the market heartbeat on the check-in.
+func (s *ClientStatus) streamStats(stream string) (lastSent time.Time, failed int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if h := s.streams[stream]; h != nil {
+		return h.lastSent, h.failed
+	}
+	return time.Time{}, 0
 }
 
 // recordFailed counts a failed upload AND flags it as an issue: a failed upload is
@@ -176,7 +189,24 @@ const trackingWindow = 30 * time.Second
 func (s *ClientStatus) markSeen() {
 	if s.lastSeenNano.Swap(time.Now().UnixNano()) == 0 {
 		s.addActivity("Seeing your game - capturing")
+		// The client usually runs quietly in the tray, so say once per run that it
+		// is working. Asynchronous: a toast takes a moment to post, and this is the
+		// packet hot path.
+		go pushNotification(capturingMessage(CodexLinked()))
 	}
+}
+
+// pushNotification posts a desktop notification. A variable so tests can
+// capture it instead of popping real toasts.
+var pushNotification = notification.Push
+
+// capturingMessage is the one-time toast when the client first sees the game.
+// Unlinked, nothing reaches Codex yet, so it says what to do instead.
+func capturingMessage(linked bool) string {
+	if !linked {
+		return "Codex Client sees your game, but this PC is not linked yet. Click the tray icon to link it."
+	}
+	return "Codex Client is capturing. Click the tray icon to see what is being sent."
 }
 
 // addActivity appends a human-readable event to the live activity feed.

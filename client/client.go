@@ -60,16 +60,24 @@ func (client *Client) Run() error {
 	} else {
 		// Single instance: only one client may run at a time.
 		//
-		// This used to reopen the running instance's browser window from a saved
-		// URL, which meant every duplicate launch spawned ANOTHER Edge/Chrome app
-		// process against the same client. With the tray there is nothing to
-		// reopen - the icon is already there - so a duplicate launch tells the
-		// player where to look and exits.
+		// A duplicate launch asks the running client to show its window (the
+		// player double-clicked the exe because they want to see it) and exits.
+		// Only if the running client cannot be reached does it fall back to a
+		// toast pointing at the tray.
 		if !acquireSingleInstance() {
+			if signalShowWindow() {
+				log.Info("Codex Client is already running; showing its window.")
+				return nil
+			}
 			log.Info("Codex Client is already running; look for the Codex icon in the system tray.")
 			notification.Push("Codex Client is already running - look for the icon in your system tray.")
 			return nil
 		}
+
+		// Read the old autostart entry BEFORE rewriting it: a pre -background entry
+		// means this is the first start after an auto-update, which must stay
+		// quiet like any background launch.
+		quiet := quietStart(ConfigGlobal.CodexBackground, upgradedFromLegacyAutostart())
 
 		// Launch at Windows login so it is running before the player logs into
 		// Albion (the game only sends the board/market data while capturing).
@@ -88,12 +96,14 @@ func (client *Client) Run() error {
 		// and self-update (checksum-verified) when a newer build ships, then restart.
 		startCodexUpdater(version)
 
-		// The local panel server. The window itself is opened from the tray, or
-		// now if -panel was passed, or automatically when the client has never
-		// been linked - a first-time user has no reason to know the tray icon is
-		// where linking lives, and the old panel opened itself for that reason.
+		// The local panel server, then the window: opened now when the player
+		// started the client themselves (not the quiet -background launch at
+		// Windows login or after an update), when -panel was passed, or when the
+		// client has never been linked. Otherwise it waits in the tray, and a
+		// second launch of the exe brings it up.
 		StartPanel()
-		if ConfigGlobal.CodexOpenPanel || !CodexLinked() {
+		listenForShowWindow(OpenPanel)
+		if shouldOpenPanelOnStart(ConfigGlobal.CodexOpenPanel, quiet, CodexLinked()) {
 			OpenPanel()
 		}
 

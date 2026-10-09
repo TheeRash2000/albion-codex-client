@@ -44,6 +44,21 @@ func stashMarketOrders(orders []*lib.MarketOrder, server string) {
 	pendingAt = time.Now()
 }
 
+// dropPendingMarket discards held market orders without uploading them. Called on
+// a character switch: the held browse was seen by the previous character, and
+// flushing it on the new character's next zone change would stamp those prices
+// with the new character's location.
+func dropPendingMarket() {
+	pendingMarketMu.Lock()
+	n := len(pendingOrders)
+	pendingOrders = nil
+	pendingServer = ""
+	pendingMarketMu.Unlock()
+	if n > 0 {
+		log.Debugf("Dropping %d market orders held before a character switch; their location is unknown.", n)
+	}
+}
+
 // flushPendingMarket uploads stashed market orders once a valid location is known,
 // stamping any unlocated order with it. Called from the join + cluster handlers
 // right after the location is set. No-op if nothing is pending or the location is

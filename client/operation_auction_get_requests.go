@@ -16,19 +16,7 @@ type operationAuctionGetRequestsResponse struct {
 func (op operationAuctionGetRequestsResponse) Process(state *albionState) {
 	log.Debug("Got response to AuctionGetRequests operation...")
 
-	var orders []*lib.MarketOrder
-
-	for _, v := range op.MarketOrders {
-		order := &lib.MarketOrder{}
-
-		err := json.Unmarshal([]byte(v), order)
-		if err != nil {
-			log.Errorf("Problem converting market order to internal struct: %v", err)
-		}
-
-		order.LocationID = state.LocationId
-		orders = append(orders, order)
-	}
+	orders := decodeRequestOrders(op.MarketOrders, state.LocationId)
 
 	if len(orders) < 1 {
 		return
@@ -54,4 +42,34 @@ func (op operationAuctionGetRequestsResponse) Process(state *albionState) {
 	identifier, _ := uuid.NewV4()
 	log.Infof("Sending %d live market buy orders to ingest (Identifier: %s)", len(orders), identifier)
 	sendMsgToPublicUploaders(upload, lib.NatsMarketOrdersIngest, state, identifier.String())
+}
+
+// decodeRequestOrders turns the raw buy-request strings into orders at the
+// player's location. An order that is not valid JSON is skipped: it used to be
+// kept as an EMPTY order (no item, no price) and forwarded to the public
+// uploaders. One that is valid JSON with a mistyped field is kept, as before.
+func decodeRequestOrders(raw []string, playerLocation string) []*lib.MarketOrder {
+	var orders []*lib.MarketOrder
+	skipped := 0
+
+	for _, v := range raw {
+		if !json.Valid([]byte(v)) {
+			skipped++
+			continue
+		}
+		order := &lib.MarketOrder{}
+
+		err := json.Unmarshal([]byte(v), order)
+		if err != nil {
+			log.Errorf("Problem converting market order to internal struct: %v", err)
+		}
+
+		order.LocationID = playerLocation
+		orders = append(orders, order)
+	}
+
+	if skipped > 0 {
+		log.Errorf("Skipped %d market buy orders that were not valid JSON.", skipped)
+	}
+	return orders
 }

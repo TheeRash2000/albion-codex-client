@@ -10,14 +10,16 @@ import (
 	"github.com/ao-data/albiondata-client/log"
 )
 
-// versionReportInterval re-reports the running build once a day so the admin
-// device roster stays current for long-lived (autostart) clients.
-const versionReportInterval = 24 * time.Hour
+// versionReportInterval re-reports the running build and the market heartbeat.
+// Hourly (was daily) so the admin roster shows a market capture that stopped or
+// is failing within the hour, not the next day: one small request per hour.
+const versionReportInterval = time.Hour
 
-// startVersionReporter reports this client's build version to Codex on startup and
-// once per day thereafter, so the admin device roster shows which build each device
-// runs. Fire-and-forget and paired-only: an unpaired client skips it, and any
-// failure is logged and swallowed so it never blocks startup or capture.
+// startVersionReporter reports this client's build version and market-capture
+// health to Codex on startup and hourly thereafter, so the admin device roster
+// shows which build each device runs and whether its market capture works.
+// Fire-and-forget and paired-only: an unpaired client skips it, and any failure
+// is logged and swallowed so it never blocks startup or capture.
 func startVersionReporter(version string) {
 	go func() {
 		reportVersionToCodex(version)
@@ -29,7 +31,37 @@ func startVersionReporter(version string) {
 	}()
 }
 
-// reportVersionToCodex POSTs {"version": <build>} to /api/client/version with the
+// marketHeartbeat is the market-capture health sent with each check-in. Without
+// it the server cannot tell "market upload switched off" or "every upload is
+// failing" from a player who is not browsing a market (2026-10-04).
+type marketHeartbeat struct {
+	On         bool   `json:"on"`
+	LastSentAt string `json:"last_sent_at,omitempty"` // last accepted upload this run
+	Failed     int    `json:"failed"`                 // failed uploads this run
+}
+
+type versionReport struct {
+	Version string          `json:"version"`
+	Market  marketHeartbeat `json:"market"`
+}
+
+// versionReportBody encodes the check-in. Servers before migration 072 read only
+// "version" and ignore the rest, so this is safe to ship in either order.
+func versionReportBody(version string) []byte {
+	lastSent, failed := Status.streamStats(marketStream)
+	hb := marketHeartbeat{On: marketUploadEnabled(), Failed: failed}
+	if !lastSent.IsZero() {
+		hb.LastSentAt = lastSent.UTC().Format(time.RFC3339)
+	}
+	b, err := json.Marshal(versionReport{Version: version, Market: hb})
+	if err != nil {
+		log.Errorf("Codex: could not encode version report: %v", err)
+		return nil
+	}
+	return b
+}
+
+// reportVersionToCodex POSTs {"version": <build>, "market": {...}} to /api/client/version with the
 // device bearer token. No-op (single debug line) when not paired. The version
 // string matches the one stamped into the build / shown on the /download page
 // (e.g. "alpha-0.1.10"). The server truncates to 40 chars.
@@ -44,9 +76,8 @@ func reportVersionToCodex(version string) {
 		return
 	}
 
-	body, err := json.Marshal(map[string]string{"version": version})
-	if err != nil {
-		log.Errorf("Codex: could not encode version report: %v", err)
+	body := versionReportBody(version)
+	if body == nil {
 		return
 	}
 

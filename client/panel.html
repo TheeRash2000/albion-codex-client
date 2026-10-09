@@ -124,6 +124,13 @@ body{
 /* ---- bounties ---- */
 .bnote{padding:10px 13px 4px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic;line-height:1.45}
 .bq{font-family:var(--cin);font-size:11px;color:var(--lx-gold-bright);min-width:56px;text-align:right;flex:none}
+.tier{font-family:var(--cin);font-size:8px;letter-spacing:.05em;color:var(--lx-gold);border:1px solid var(--lx-rule);
+  border-radius:3px;padding:1px 5px;margin-right:7px;vertical-align:1px}
+.cpy{font-family:var(--cin);font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--lx-muted);background:none;
+  border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px;cursor:pointer;flex:none}
+.cpy:hover,.cpy:focus-visible{color:var(--lx-gold);border-color:var(--lx-gold);outline:none}
+.cpy.ok{color:var(--lx-gold-bright);border-color:var(--lx-gold)}
+.bact{display:flex;justify-content:flex-end;padding:8px 13px 9px}
 
 /* ---- npcap warning ---- */
 .warncard{border-color:rgba(200,72,72,.4)}
@@ -214,6 +221,7 @@ body{
     <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
     <div class="bnote" id="bountyNote"></div>
     <div id="bounties"></div>
+    <div class="bact hidden" id="bountyActs"><button type="button" class="cpy" id="copyAll">Copy all</button></div>
   </div>
 
   <div class="card hidden" id="coverageCard">
@@ -513,12 +521,25 @@ function renderBounties(b) {
     'Scan any of these in a market and you unlock pricing for the items below them, '
     + 'for everyone on ' + (b.server || 'your realm') + '.';
 
-  list.replaceChildren(...wanted.slice(0, 6).map((w) => {
+  const shown = wanted.slice(0, 6);
+  list.replaceChildren(...shown.map((w) => {
     const row = document.createElement('div');
     row.className = 'row';
     const name = document.createElement('span');
     name.className = 'rname';
-    name.textContent = prettyItem(w.id);
+    /* Newer responses carry the in-game name and tier; older ones only the raw
+       id, so fall back to the id-based label rather than rendering nothing. */
+    if (w.name) {
+      if (w.tier) {
+        const t = document.createElement('span');
+        t.className = 'tier';
+        t.textContent = 'T' + w.tier;
+        name.append(t);
+      }
+      name.append(w.name);
+    } else {
+      name.textContent = prettyItem(w.id);
+    }
     const n = document.createElement('span');
     n.className = 'bq';
     n.textContent = nf(w.blocks);
@@ -526,9 +547,58 @@ function renderBounties(b) {
     unit.className = 'rmeta';
     unit.textContent = w.blocks === 1 ? 'item' : 'items';
     row.append(name, n, unit);
+    if (w.copyText) {
+      const c = document.createElement('button');
+      c.type = 'button';
+      c.className = 'cpy';
+      c.textContent = 'Copy';
+      c.title = 'Copy the market search text';
+      c.setAttribute('aria-label', 'Copy search text for ' + (w.name || prettyItem(w.id)));
+      c.addEventListener('click', () => copyWithFeedback(c, w.copyText, 'Copy'));
+      row.append(c);
+    }
     return row;
   }));
+
+  /* One copyText per line, de-duplicated, in list order. */
+  const lines = [];
+  shown.forEach((w) => { if (w.copyText && lines.indexOf(w.copyText) < 0) lines.push(w.copyText); });
+  const all = $('copyAll');
+  all.onclick = () => copyWithFeedback(all, lines.join('\n'), 'Copy all');
+  $('bountyActs').classList.toggle('hidden', lines.length < 2);
   card.classList.remove('hidden');
+}
+
+/* Clipboard. navigator.clipboard works in WebView2 because the panel is served
+   from 127.0.0.1 (a secure context) and the call runs inside a click. If it is
+   missing or rejected, fall back to a hidden textarea + execCommand. A local
+   POST endpoint was deliberately not added: any web page could call it and
+   overwrite the clipboard. */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {}
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function copyWithFeedback(btn, text, idle) {
+  const ok = await copyText(text);
+  btn.textContent = ok ? 'Copied' : 'Copy failed';
+  btn.classList.toggle('ok', ok);
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { btn.textContent = idle; btn.classList.remove('ok'); }, 1500);
 }
 
 /* The bounty ids are raw item ids (T4_ORE). The client has no name map for

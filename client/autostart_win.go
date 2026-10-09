@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"github.com/ao-data/albiondata-client/log"
 )
@@ -35,6 +36,72 @@ func isVolatileExePath(exe string) bool {
 	return false
 }
 
+// autostartValue is the Run-key command: the exe, quoted (paths have spaces),
+// plus -background so a login launch stays in the tray instead of opening the
+// window. Earlier builds stored the bare path; the next launch rewrites it.
+func autostartValue(exe string) string {
+	return `"` + exe + `" -` + backgroundFlag
+}
+
+// autostartRegCmdLine is the exact reg.exe command line that stores
+// autostartValue. Written out rather than left to exec's argument escaping, so
+// the value's embedded quotes are encoded one known way (\" inside a quoted
+// argument, the rule reg.exe parses with). Tested by decoding it back.
+func autostartRegCmdLine(exe string) string {
+	quoted := strings.ReplaceAll(autostartValue(exe), `"`, `\"`)
+	return `reg add "` + autostartRunKey + `" /v ` + autostartName + ` /t REG_SZ /d "` + quoted + `" /f`
+}
+
+// upgradedFromLegacyAutostart reports whether this machine's autostart entry was
+// written by a build older than -background (0.1.16 and earlier). Read BEFORE
+// ensureAutostart rewrites it.
+//
+// It identifies the first start after an auto-update from such a build: the OLD
+// build performs the restart and passes no -background, so without this every
+// upgraded client would open its window at whatever moment the update landed,
+// mid-game included. Only that first start matches; it then rewrites the entry,
+// and a fresh install has no entry at all, so a player's own launch still opens
+// the window.
+func upgradedFromLegacyAutostart() bool {
+	v, ok := readRunValue(autostartName)
+	return ok && isLegacyAutostartValue(v)
+}
+
+// isLegacyAutostartValue: an entry with no -background flag.
+func isLegacyAutostartValue(v string) bool {
+	return !strings.Contains(v, "-"+backgroundFlag)
+}
+
+// readRunValue reads one value from the HKCU Run key (read-only).
+func readRunValue(name string) (string, bool) {
+	keyPath, err := syscall.UTF16PtrFromString(`Software\Microsoft\Windows\CurrentVersion\Run`)
+	if err != nil {
+		return "", false
+	}
+	var k syscall.Handle
+	if err := syscall.RegOpenKeyEx(syscall.HKEY_CURRENT_USER, keyPath, 0, syscall.KEY_READ, &k); err != nil {
+		return "", false
+	}
+	defer syscall.RegCloseKey(k)
+
+	valueName, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return "", false
+	}
+	var typ, size uint32
+	if err := syscall.RegQueryValueEx(k, valueName, nil, &typ, nil, &size); err != nil || size == 0 {
+		return "", false
+	}
+	if typ != syscall.REG_SZ && typ != syscall.REG_EXPAND_SZ {
+		return "", false
+	}
+	buf := make([]uint16, size/2+1)
+	if err := syscall.RegQueryValueEx(k, valueName, nil, &typ, (*byte)(unsafe.Pointer(&buf[0])), &size); err != nil {
+		return "", false
+	}
+	return syscall.UTF16ToString(buf), true
+}
+
 // ensureAutostart registers the client to launch at Windows login (HKCU Run key),
 // so it is already capturing before the player logs into Albion - the game only
 // sends the Destiny Board (and market data) while the client is running. It points
@@ -52,9 +119,8 @@ func ensureAutostart() {
 		log.Debugf("Autostart: running from a temp folder (%s); leaving the existing autostart entry untouched.", exe)
 		return
 	}
-	cmd := exec.Command("reg", "add", autostartRunKey,
-		"/v", autostartName, "/t", "REG_SZ", "/d", exe, "/f")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := exec.Command("reg")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CmdLine: autostartRegCmdLine(exe)}
 	if err := cmd.Run(); err != nil {
 		log.Debugf("Autostart: could not register: %v", err)
 		return

@@ -8,7 +8,9 @@ import (
 )
 
 func Push(msg string) {
-	note := toast.Notification{AppID: "Albion Data Client", Title: "Albion Data Client", Message: msg}
+	// Title is what the player reads. AppID stays as it was: Windows ties toast
+	// delivery and the player's notification settings to it.
+	note := toast.Notification{AppID: "Albion Data Client", Title: "Codex Client", Message: msg}
 
 	err := note.Push()
 	if err != nil {

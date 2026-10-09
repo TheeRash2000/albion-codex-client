@@ -87,6 +87,7 @@ type config struct {
 	CodexPair         bool
 	CodexMarketUpload bool
 	CodexOpenPanel    bool
+	CodexBackground   bool
 	AdminMode         bool
 }
 
@@ -474,4 +475,29 @@ func (config *config) setupPanelFlag() {
 		false,
 		"Open the Codex Client panel window on start (normally opened from the tray).",
 	)
+	flag.BoolVar(
+		&config.CodexBackground,
+		backgroundFlag,
+		false,
+		"Start in the tray without opening the window. Used by the Windows autostart entry and after a self-update; a launch without it opens the window.",
+	)
+}
+
+// backgroundFlag marks a launch nobody is looking at (Windows login, self-update
+// restart). Any other launch is the player starting the client, so it opens the
+// window: a double-click that only adds a tray icon looks like nothing happened.
+const backgroundFlag = "background"
+
+// shouldOpenPanelOnStart decides whether startup opens the window: when asked
+// to (-panel), when the player started the client themselves (no -background),
+// or when the PC is not linked yet (linking happens in the window).
+func shouldOpenPanelOnStart(openPanel, background, linked bool) bool {
+	return openPanel || !background || !linked
+}
+
+// quietStart is a launch nobody is looking at: -background, or the first start
+// after an auto-update from a build that predates -background (see
+// upgradedFromLegacyAutostart).
+func quietStart(background, upgradedFromLegacy bool) bool {
+	return background || upgradedFromLegacy
 }

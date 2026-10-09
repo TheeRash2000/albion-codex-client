@@ -11,6 +11,10 @@ import (
 	"github.com/ao-data/albiondata-client/log"
 )
 
+// marketStream is the capture-health name of the market-price uploads. The
+// check-in heartbeat reads this stream's numbers (codex_version.go).
+const marketStream = "Market prices"
+
 // codexPrice is one aggregated market row in the ingest payload.
 type codexPrice struct {
 	ItemID      string `json:"item_id"`
@@ -243,7 +247,7 @@ func uploadMarketToCodex(orders []*lib.MarketOrder, server string) {
 	// Market spot prices are re-observable on the next browse, so they are low-value
 	// (shed first if the queue ever overflows).
 	n := len(prices)
-	enqueueCodexUpload("Market prices", "/api/client/market", body, n, true, func() {
+	enqueueCodexUpload(marketStream, "/api/client/market", body, n, true, func() {
 		log.Infof("Codex: uploaded %d market prices.", n)
 		recordMarketActivity(prices)
 	})

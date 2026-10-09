@@ -54,6 +54,11 @@ type ClientStats struct {
 			Kind     string   `json:"kind"`
 			Blocks   int64    `json:"blocks"`
 			Examples []string `json:"examples"`
+			// Added by the site (acd1 #720). Older responses omit all three, and the
+			// panel then falls back to the id-based label.
+			Name     string `json:"name,omitempty"`
+			Tier     int    `json:"tier,omitempty"`
+			CopyText string `json:"copyText,omitempty"`
 		} `json:"wanted"`
 	} `json:"bounties"`
 	Cities []struct {

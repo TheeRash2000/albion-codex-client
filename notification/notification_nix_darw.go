@@ -5,5 +5,5 @@ package notification
 import "github.com/ctcpip/notifize"
 
 func Push(msg string) {
-	notifize.Display("Albion Data Client", msg, false, "")
+	notifize.Display("Codex Client", msg, false, "")
 }
