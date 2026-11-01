@@ -74,11 +74,6 @@ func (client *Client) Run() error {
 			return nil
 		}
 
-		// Read the old autostart entry BEFORE rewriting it: a pre -background entry
-		// means this is the first start after an auto-update, which must stay
-		// quiet like any background launch.
-		quiet := quietStart(ConfigGlobal.CodexBackground, upgradedFromLegacyAutostart())
-
 		// Launch at Windows login so it is running before the player logs into
 		// Albion (the game only sends the board/market data while capturing).
 		ensureAutostart()
@@ -96,14 +91,12 @@ func (client *Client) Run() error {
 		// and self-update (checksum-verified) when a newer build ships, then restart.
 		startCodexUpdater(version)
 
-		// The local panel server, then the window: opened now when the player
-		// started the client themselves (not the quiet -background launch at
-		// Windows login or after an update), when -panel was passed, or when the
-		// client has never been linked. Otherwise it waits in the tray, and a
-		// second launch of the exe brings it up.
+		// The local panel server, then the window: opened on every launch, the
+		// Windows login autostart and the restart after a self-update included.
+		// Closing the window hides it; a second launch of the exe brings it back.
 		StartPanel()
 		listenForShowWindow(OpenPanel)
-		if shouldOpenPanelOnStart(ConfigGlobal.CodexOpenPanel, quiet, CodexLinked()) {
+		if shouldOpenPanelOnStart(ConfigGlobal.CodexOpenPanel, ConfigGlobal.CodexBackground, CodexLinked()) {
 			OpenPanel()
 		}
 

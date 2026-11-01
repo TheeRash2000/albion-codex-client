@@ -199,28 +199,15 @@ func restartAfterUpdate() {
 		return
 	}
 	releaseSingleInstance()
-	cmd := exec.Command(exe, withBackgroundFlag(os.Args[1:])...)
+	// The same flags as the launch being replaced: a login autostart restarts
+	// quietly, a launch the player started reopens its window.
+	cmd := exec.Command(exe, os.Args[1:]...)
 	cmd.Env = os.Environ()
 	if err := cmd.Start(); err != nil {
 		log.Errorf("Codex updater: failed to start the updated process: %v", err)
 		return
 	}
 	os.Exit(0)
-}
-
-// withBackgroundFlag returns the restart arguments with -background added, so an
-// update that lands while the player is in game restarts quietly in the tray
-// instead of opening the window over Albion. A launch the player started without
-// the flag would otherwise open the window again after every update.
-func withBackgroundFlag(args []string) []string {
-	for _, a := range args {
-		name := strings.TrimLeft(a, "-")
-		if name == backgroundFlag || strings.HasPrefix(name, backgroundFlag+"=") {
-			return args
-		}
-	}
-	// First, not last: flag parsing stops at the first non-flag argument.
-	return append([]string{"-" + backgroundFlag}, args...)
 }
 
 var versionNumRe = regexp.MustCompile(`\d+`)

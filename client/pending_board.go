@@ -7,15 +7,15 @@ import (
 	"github.com/ao-data/albiondata-client/log"
 )
 
-// pendingBoard holds a destiny board captured (event 151) before we knew the
-// player's identity. Event 151 and the join response (operation_join.go, which
+// pendingBoard holds a destiny board captured (evFullAchievementInfo) before we knew the
+// player's identity. The board event and the join response (operation_join.go, which
 // sets CharacterId -> albion_id) both fire around login/zone-change, but the
-// order varies. If event 151 wins the race, uploading immediately would send the
+// order varies. If the board event wins the race, uploading immediately would send the
 // board with NO albion_id and the server could only match it by name. So we stash
 // it here and flush it once the join response provides the id.
 //
 // The stash is BOUND to the character identity that was active when the board was
-// captured (charID/charName, either of which may be empty if event 151 fully won
+// captured (charID/charName, either of which may be empty if the board event fully won
 // the race). The flush refuses to upload a board under a DIFFERENT identity than it
 // was captured for, and a character switch drops the stash outright. Without this,
 // a board captured while on character A could be flushed under character B's
@@ -45,7 +45,7 @@ func stashBoard(charID, charName, server string, skills []*lib.Skill) {
 // dropPendingBoard discards any stashed board without uploading it. Called on a
 // character switch: the stashed board belonged to the previous character and must
 // never be attached to the new one. The new character's board uploads when its own
-// event 151 arrives.
+// board event arrives.
 func dropPendingBoard() {
 	pendingBoardMu.Lock()
 	dropped := pendingBoard

@@ -5,7 +5,7 @@ import "testing"
 // TestPendingBoardIsForCurrent locks the rule that prevents the cross-character
 // destiny-board corruption: a board stashed under one character's identity must
 // never be flushed under a different character's identity. A board captured before
-// any id was known (empty stashed id, the first-login event-151-before-join race)
+// any id was known (empty stashed id, the first-login board-before-join race)
 // is the only case allowed to flush under the now-known id.
 func TestPendingBoardIsForCurrent(t *testing.T) {
 	const clown = "psfPiWUhQ7uLE-q_nYxpig"

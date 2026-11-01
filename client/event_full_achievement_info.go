@@ -5,14 +5,14 @@ import (
 	"github.com/ao-data/albiondata-client/log"
 )
 
-// completedNodeLevel is a sentinel for nodes in event 151's "completed" list
+// completedNodeLevel is a sentinel for nodes in the board event's "completed" list
 // (key1). Those nodes carry no explicit level - the game flags them as MAXED.
 // We can't know the cap here (mastery 100 vs combat spec 120) without the spec
 // metadata, so we send this sentinel and the server assigns each node its real
 // maxLevel. Any value above the real 0-120 range works as the marker.
 const completedNodeLevel = 999
 
-// eventFullAchievementInfo is Photon event 151 (evFullAchievementInfo): the
+// eventFullAchievementInfo is Photon event 150 (evFullAchievementInfo; 151 before the 2026-10-12 patch): the
 // player's COMPLETE destiny board, pushed once at login / first board load.
 //
 //	key1 = COMPLETED node IDs (no level array - they're maxed; this is where the
@@ -55,7 +55,7 @@ func (event eventFullAchievementInfo) Process(state *albionState) {
 		state.CharacterName, albionID, server, n, len(event.CompletedIDs))
 	Status.addActivity("Captured your Destiny Board")
 
-	// If the join response hasn't set the player's identity yet (event 151 can
+	// If the join response hasn't set the player's identity yet (the board event can
 	// arrive first), hold the board and let operation_join.go upload it once the
 	// id is known - otherwise it would upload with no albion_id and match by name.
 	// Bind the stash to whatever identity is active now so it can never be flushed

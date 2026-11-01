@@ -50,7 +50,7 @@ func (op operationJoinResponse) Process(state *albionState) {
 		// character and must never be flushed under this new identity. The game caches
 		// the board client-side, so right after a switch a stale board can still be in
 		// flight; attaching it to the new character is the corruption we are preventing.
-		// The new character's board uploads when its own event 151 arrives.
+		// The new character's board uploads when its own board event arrives.
 		Status.switchCharacter(op.CharacterName)
 		dropPendingBoard()
 		// Same for a held market browse: it was seen by the previous character in a
@@ -59,8 +59,13 @@ func (op operationJoinResponse) Process(state *albionState) {
 		return
 	}
 
+	// Show the character from the join itself. Before, the tray only learned the name
+	// from a board capture, so when the board event code moved (2026-10-12 patch) the
+	// player saw no character at all and read it as "not tracking my character".
+	Status.setCharacter(op.CharacterName)
+
 	// Same character (a zone-change join fires with the same id) or first login: if a
-	// board was captured before we knew the identity (event 151 raced ahead of this
+	// board was captured before we knew the identity (the board event raced ahead of this
 	// join), upload it now that CharacterId/Name are set. No-op otherwise.
 	flushPendingBoard(state)
 

@@ -9,7 +9,7 @@ import (
 	"github.com/ao-data/albiondata-client/log"
 )
 
-// eventEstimatedMarketValue is Photon event 464 (evEstimatedMarketValueUpdate):
+// eventEstimatedMarketValue is Photon event 465 (evEstimatedMarketValueUpdate; 464 before the 2026-10-12 patch):
 // the server's OWN estimated market value for an item, pushed when the player
 // views the item (the "Estimated Market Value" tooltip). This is a manipulation-
 // resistant, server-authored price signal - a strong input for Codex pricing,

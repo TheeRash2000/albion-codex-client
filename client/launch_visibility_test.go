@@ -1,12 +1,16 @@
 package client
 
 import (
-	"reflect"
 	"sync"
 	"testing"
 	"time"
 )
 
+// The window opens on every start, the Windows login autostart included
+// (no launch may skip the window, because a player who never sees it never
+// finds "Link this PC"). The -background flag that older autostart
+// entries pass is accepted and ignored, and a self-update restart follows the
+// same rule whatever flags it inherits.
 func TestShouldOpenPanelOnStart(t *testing.T) {
 	cases := []struct {
 		name                      string
@@ -14,34 +18,15 @@ func TestShouldOpenPanelOnStart(t *testing.T) {
 		want                      bool
 	}{
 		{"player double-clicks the exe", false, false, true, true},
-		{"Windows login (autostart)", false, true, true, false},
-		{"restart after a self-update", false, true, true, false},
-		{"-panel wins over -background", true, true, true, true},
-		{"never linked: always open, linking lives in the window", false, true, false, true},
-	}
-	// quietStart folds in the first start after an upgrade from a build whose
-	// autostart entry had no -background: quiet, like a background launch.
-	if quietStart(false, true) != true || quietStart(true, false) != true || quietStart(false, false) != false {
-		t.Error("quietStart must be background OR upgraded-from-legacy")
+		{"Windows login (autostart, -background)", false, true, true, true},
+		{"restart after a self-update of a login launch", false, true, true, true},
+		{"restart after a self-update of a player's launch", false, false, true, true},
+		{"-panel", true, true, true, true},
+		{"never linked", false, true, false, true},
 	}
 	for _, c := range cases {
 		if got := shouldOpenPanelOnStart(c.openPanel, c.background, c.ok); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
-func TestWithBackgroundFlag(t *testing.T) {
-	cases := []struct{ in, want []string }{
-		{nil, []string{"-background"}},
-		{[]string{"-debug"}, []string{"-background", "-debug"}},
-		{[]string{"-background"}, []string{"-background"}},
-		{[]string{"--background"}, []string{"--background"}},
-		{[]string{"-background=false", "-debug"}, []string{"-background=false", "-debug"}}, // an explicit choice is kept
-	}
-	for _, c := range cases {
-		if got := withBackgroundFlag(c.in); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("withBackgroundFlag(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

@@ -479,25 +479,21 @@ func (config *config) setupPanelFlag() {
 		&config.CodexBackground,
 		backgroundFlag,
 		false,
-		"Start in the tray without opening the window. Used by the Windows autostart entry and after a self-update; a launch without it opens the window.",
+		"Accepted for older autostart entries; it no longer keeps the window closed. Every launch opens the window.",
 	)
 }
 
-// backgroundFlag marks a launch nobody is looking at (Windows login, self-update
-// restart). Any other launch is the player starting the client, so it opens the
-// window: a double-click that only adds a tray icon looks like nothing happened.
+// backgroundFlag is still parsed because the Windows autostart entry written
+// by earlier builds passes it, and an unknown flag would make that login
+// launch exit. It no longer changes anything: since 0.1.18 every launch opens
+// the window, the login autostart and the restart after a self-update
+// included. A start that only adds a tray icon looks like nothing happened,
+// and a player who never sees the window never finds "Link this PC".
 const backgroundFlag = "background"
 
-// shouldOpenPanelOnStart decides whether startup opens the window: when asked
-// to (-panel), when the player started the client themselves (no -background),
-// or when the PC is not linked yet (linking happens in the window).
+// shouldOpenPanelOnStart decides whether startup opens the window. It always
+// does. The parameters stay so the launch kinds remain named in the test and
+// at the call site, and so a future exception has somewhere to live.
 func shouldOpenPanelOnStart(openPanel, background, linked bool) bool {
-	return openPanel || !background || !linked
-}
-
-// quietStart is a launch nobody is looking at: -background, or the first start
-// after an auto-update from a build that predates -background (see
-// upgradedFromLegacyAutostart).
-func quietStart(background, upgradedFromLegacy bool) bool {
-	return background || upgradedFromLegacy
+	return true
 }

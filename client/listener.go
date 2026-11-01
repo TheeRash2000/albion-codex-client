@@ -15,11 +15,26 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+// liveCaptureSnapLen is the max bytes captured per packet on a live
+// interface. It must be well above the path MTU: Windows UDP receive
+// segment coalescing (URO, on by default in Windows 11) merges bursts of
+// 1200-byte Photon datagrams into a single packet before Npcap sees it,
+// and market order responses arrive as exactly such a burst (packets up
+// to ~14KB observed). A smaller snaplen truncates those packets, the
+// fragmented response never reassembles, and live market orders are
+// silently dropped while small responses (gold, history) still work.
+// Ported from upstream albiondata-client 1bf2769 (0.1.60); this fork had 2048.
+const liveCaptureSnapLen = 262144
+
 type listener struct {
 	handle        *pcap.Handle
 	sourcePackets chan gopacket.Packet
 	rawCommands   chan photon.RawPacket
 	displayName   string
+	// device is the interface an online listener was started on, set by
+	// the caller before startOnline runs, so albionProcessWatcher.rescan
+	// can stop the listener of a device that has disappeared.
+	device        string
 	parser        *photon.PhotonParser
 	quit          chan bool
 	router        *Router
@@ -36,16 +51,27 @@ func newListener(router *Router) *listener {
 	return l
 }
 
+// startOnline opens a live capture on device. Some enumerated interfaces
+// can't actually be opened for capture (Wintun-based VPN adapters are a
+// common example on Windows: Npcap binds at the NDIS-filter level and
+// Wintun is a pure Layer-3 tunnel). That is expected for a subset of
+// interfaces, not fatal: this logs and abandons only this listener. A
+// panic here runs on its own goroutine with nothing to recover it, so it
+// used to take down capture on every other interface too (upstream f65087b).
 func (l *listener) startOnline(device string, port int) {
-	handle, err := pcap.OpenLive(device, 2048, false, pcap.BlockForever)
+	handle, err := pcap.OpenLive(device, liveCaptureSnapLen, false, pcap.BlockForever)
 	if err != nil {
-		log.Panic(err)
+		log.Errorf("Could not open %s for capture, skipping this interface: %v", device, err)
+		return
 	}
 	l.handle = handle
 
 	err = l.handle.SetBPFFilter(fmt.Sprintf("tcp port %d || udp port %d", port, port))
 	if err != nil {
-		log.Panic(err)
+		log.Errorf("Could not set capture filter on %s, skipping this interface: %v", device, err)
+		l.handle.Close()
+		l.handle = nil
+		return
 	}
 
 	source := gopacket.NewPacketSource(l.handle, l.handle.LinkType())
@@ -134,7 +160,10 @@ func (l *listener) run() {
 
 func (l *listener) stop() {
 	l.quit <- true
-	l.handle.Close()
+	// handle is nil when startOnline skipped a device it couldn't open.
+	if l.handle != nil {
+		l.handle.Close()
+	}
 }
 
 func (l *listener) processPacket(packet gopacket.Packet) {

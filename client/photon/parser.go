@@ -9,6 +9,19 @@ const (
 	photonHeaderLength   = 12
 	commandHeaderLength  = 12
 	fragmentHeaderLength = 20
+
+	// maxPendingSegments bounds how many in-progress fragment reassemblies
+	// can be tracked at once. Without this cap, a fragment lost to packet
+	// loss (e.g. during a network hiccup) leaves its entry - and the
+	// buffer it allocated - in pendingSegments forever, growing without
+	// bound as more fragmented messages arrive. When full, the oldest
+	// incomplete reassembly is evicted to make room for a new one.
+	maxPendingSegments = 64
+
+	// maxSegmentTotalLength caps the totalLength read off the wire for a
+	// fragmented message, which otherwise sizes a `make([]byte, totalLen)`
+	// allocation directly from unvalidated packet data.
+	maxSegmentTotalLength = 8 << 20 // 8 MiB
 )
 
 // Photon command type constants
@@ -30,6 +43,13 @@ const (
 	msgEncrypted = byte(131)
 )
 
+// Photon packet header flag values.
+const (
+	flagEncrypted  = byte(1)
+	flagCrcEnabled = byte(0xCC)
+	crcFieldLength = 4
+)
+
 type segmentedPackage struct {
 	totalLength  int
 	bytesWritten int
@@ -47,6 +67,11 @@ type RawPacket struct {
 // https://github.com/JPCodeCraft/AlbionDataAvalonia.
 type PhotonParser struct {
 	pendingSegments map[int]*segmentedPackage
+	// segmentOrder tracks insertion order of pendingSegments keys so the
+	// oldest incomplete reassembly can be evicted once maxPendingSegments
+	// is reached. Entries for keys already removed from pendingSegments
+	// (completed or previously evicted) are skipped lazily.
+	segmentOrder []int
 
 	// OnRequest is called for every decoded OperationRequest.
 	OnRequest func(operationCode byte, params map[byte]interface{})
@@ -76,8 +101,64 @@ func NewPhotonParser(
 }
 
 // ReceivePacket processes a raw Photon UDP/TCP payload and fires the appropriate
-// callbacks. Returns true if the packet header was valid.
+// callbacks. Returns true if every Photon packet found in the payload was valid.
+//
+// A single UDP datagram can carry more than one Photon packet back-to-back
+// (e.g. due to NIC/driver receive coalescing on some users' machines), so this
+// scans for packet boundaries using the peerId/challenge identity shared by
+// every packet in the payload and processes each one in turn.
 func (p *PhotonParser) ReceivePacket(payload []byte) bool {
+	if len(payload) < photonHeaderLength {
+		return false
+	}
+
+	peerID, challenge, ok := getPacketIdentity(payload, 0)
+	if !ok {
+		return false
+	}
+
+	firstLen, isTerminalEncrypted, ok := getPacketLength(payload, 0)
+	if !ok {
+		return false
+	}
+
+	if isTerminalEncrypted || firstLen == len(payload) {
+		return p.receiveSinglePacket(payload)
+	}
+
+	type packetRange struct{ offset, length int }
+	ranges := []packetRange{{0, firstLen}}
+	off := firstLen
+	framingOK := true
+
+	for off < len(payload) {
+		if !matchesIdentity(payload, off, peerID, challenge) {
+			framingOK = false
+			break
+		}
+		length, isTerminal, valid := getPacketLength(payload, off)
+		if !valid {
+			framingOK = false
+			break
+		}
+		ranges = append(ranges, packetRange{off, length})
+		off += length
+		if isTerminal {
+			break
+		}
+	}
+
+	success := framingOK
+	for _, r := range ranges {
+		if !p.receiveSinglePacket(payload[r.offset : r.offset+r.length]) {
+			success = false
+		}
+	}
+	return success
+}
+
+// receiveSinglePacket parses exactly one Photon packet (header + commands).
+func (p *PhotonParser) receiveSinglePacket(payload []byte) bool {
 	if len(payload) < photonHeaderLength {
 		return false
 	}
@@ -89,21 +170,118 @@ func (p *PhotonParser) ReceivePacket(payload []byte) bool {
 	offset++
 	offset += 8 // skip timestamp (4) + challenge (4)
 
-	if flags == 1 {
+	if flags == flagEncrypted {
 		if p.OnEncrypted != nil {
 			p.OnEncrypted()
 		}
 		return false
 	}
 
-	for i := 0; i < commandCount; i++ {
-		var ok bool
-		offset, ok = p.handleCommand(payload, offset)
-		if !ok {
+	if flags == flagCrcEnabled {
+		if !available(payload, offset, crcFieldLength) {
+			return false
+		}
+		crc := binary.BigEndian.Uint32(payload[offset:])
+		offset += crcFieldLength
+
+		crcPayload := append([]byte(nil), payload...)
+		for i := photonHeaderLength; i < photonHeaderLength+crcFieldLength; i++ {
+			crcPayload[i] = 0
+		}
+		if crc != calculateCrc(crcPayload) {
 			return false
 		}
 	}
-	return true
+
+	for i := 0; i < commandCount; i++ {
+		newOffset, ok := p.handleCommand(payload, offset)
+		if !ok {
+			return false
+		}
+		offset = newOffset
+	}
+
+	return offset == len(payload)
+}
+
+// getPacketIdentity reads the peerId/challenge pair that is common to every
+// Photon packet coalesced into the same UDP payload.
+func getPacketIdentity(payload []byte, offset int) (peerID int16, challenge int32, ok bool) {
+	if !available(payload, offset, photonHeaderLength) {
+		return 0, 0, false
+	}
+	peerID = int16(binary.BigEndian.Uint16(payload[offset:]))
+	challenge = int32(binary.BigEndian.Uint32(payload[offset+8:]))
+	return peerID, challenge, true
+}
+
+func matchesIdentity(payload []byte, offset int, expectedPeerID int16, expectedChallenge int32) bool {
+	peerID, challenge, ok := getPacketIdentity(payload, offset)
+	return ok && peerID == expectedPeerID && challenge == expectedChallenge
+}
+
+// getPacketLength scans the packet starting at offset (header + its declared
+// commands) to determine where it ends, without decoding command contents.
+// isTerminalEncrypted reports an encrypted packet, which has no discoverable
+// length beyond "the rest of the payload" and must be the last packet.
+func getPacketLength(payload []byte, offset int) (length int, isTerminalEncrypted bool, ok bool) {
+	if !available(payload, offset, photonHeaderLength) {
+		return 0, false, false
+	}
+
+	flags := payload[offset+2]
+	if flags == flagEncrypted {
+		return len(payload) - offset, true, true
+	}
+
+	headerLen := photonHeaderLength
+	if flags == flagCrcEnabled {
+		headerLen += crcFieldLength
+	}
+	if !available(payload, offset, headerLen) {
+		return 0, false, false
+	}
+
+	commandCount := int(payload[offset+3])
+	if commandCount == 0 {
+		return 0, false, false
+	}
+
+	cmdOffset := offset + headerLen
+	for i := 0; i < commandCount; i++ {
+		if !available(payload, cmdOffset, commandHeaderLength) {
+			return 0, false, false
+		}
+		cmdLen := int(binary.BigEndian.Uint32(payload[cmdOffset+4:]))
+		if cmdLen < commandHeaderLength || !available(payload, cmdOffset, cmdLen) {
+			return 0, false, false
+		}
+		cmdOffset += cmdLen
+	}
+
+	length = cmdOffset - offset
+	if length < headerLen {
+		return 0, false, false
+	}
+	return length, false, true
+}
+
+// calculateCrc reproduces Photon's CRC32 variant (standard IEEE polynomial,
+// no final XOR) used to validate CRC-enabled packets (flags == 0xCC).
+func calculateCrc(data []byte) uint32 {
+	const key = uint32(3988292384)
+	result := uint32(0xFFFFFFFF)
+	for _, b := range data {
+		result ^= uint32(b)
+		for j := 0; j < 8; j++ {
+			if result&1 != 0 {
+				result = result>>1 ^ key
+			} else {
+				result >>= 1
+			}
+		}
+	}
+	return result
 }
 
 func (p *PhotonParser) handleCommand(src []byte, offset int) (int, bool) {
@@ -272,11 +450,21 @@ func (p *PhotonParser) handleSendFragment(src []byte, offset, cmdLen int) int {
 
 	seg, ok := p.pendingSegments[startSeq]
 	if !ok {
+		if totalLen <= 0 || totalLen > maxSegmentTotalLength {
+			// Corrupt or hostile totalLength - refuse to allocate for it.
+			return offset + fragLen
+		}
+
+		if len(p.pendingSegments) >= maxPendingSegments {
+			p.evictOldestSegment()
+		}
+
 		seg = &segmentedPackage{
 			totalLength: totalLen,
 			payload:     make([]byte, totalLen),
 		}
 		p.pendingSegments[startSeq] = seg
+		p.segmentOrder = append(p.segmentOrder, startSeq)
 	}
 
 	end := fragOffset + fragLen
@@ -292,6 +480,19 @@ func (p *PhotonParser) handleSendFragment(src []byte, offset, cmdLen int) int {
 	}
 
 	return offset
+}
+
+// evictOldestSegment drops the oldest incomplete fragment reassembly to
+// make room for a new one once maxPendingSegments is reached.
+func (p *PhotonParser) evictOldestSegment() {
+	for len(p.segmentOrder) > 0 {
+		oldest := p.segmentOrder[0]
+		p.segmentOrder = p.segmentOrder[1:]
+		if _, exists := p.pendingSegments[oldest]; exists {
+			delete(p.pendingSegments, oldest)
+			return
+		}
+	}
 }
 
 // available reports whether src[offset:offset+count] is in bounds.

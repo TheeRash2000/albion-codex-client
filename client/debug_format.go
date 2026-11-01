@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	debugFormatMaxDepth   = 5
-	debugFormatMinZeroRun = 10
-	debugFormatMaxString  = 240
-	debugFormatMaxHexLen  = 128
+	debugFormatMaxDepth    = 5
+	debugFormatMinZeroRun  = 10
+	debugFormatMaxString   = 240
+	debugFormatMaxHexBytes = 512
 )
 
 var debugSpacesZeros = regexp.MustCompile(fmt.Sprintf(`(?: 0){%d,}`, debugFormatMinZeroRun))
@@ -85,11 +85,16 @@ func formatDebugByteSlice(p []byte) string {
 	if len(p) == 0 {
 		return "[]byte{}"
 	}
-	h := hexCompactZeros(p)
-	if len(h) > debugFormatMaxHexLen {
-		h = h[:debugFormatMaxHexLen] + fmt.Sprintf("…(hexlen>%d, rawlen=%d)", debugFormatMaxHexLen, len(p))
+	// Bound the log by how many source bytes are shown rather than by the
+	// length of the compressed hex. Capping the latter made the cut depend on
+	// how well the payload happened to compress: a mostly-zero array survived
+	// intact while a short dense one was cut in half. It also cut mid-pair,
+	// since the limit was in characters.
+	if len(p) > debugFormatMaxHexBytes {
+		return fmt.Sprintf("[]byte(len=%d) %s…(shown=%d)", len(p),
+			hexCompactZeros(p[:debugFormatMaxHexBytes]), debugFormatMaxHexBytes)
 	}
-	return fmt.Sprintf("[]byte(len=%d) %s", len(p), h)
+	return fmt.Sprintf("[]byte(len=%d) %s", len(p), hexCompactZeros(p))
 }
 
 func hexCompactZeros(p []byte) string {

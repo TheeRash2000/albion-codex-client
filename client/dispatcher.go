@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"strings"
 
@@ -15,6 +16,18 @@ type dispatcher struct{}
 var (
 	wsHub *WSHub
 	dis   *dispatcher
+
+	// uploaderCacheMu guards uploaderCache.
+	uploaderCacheMu sync.Mutex
+	// uploaderCache holds one uploader per ingest target, reused across
+	// every upload. Every market order, gold price, or mail upload calls
+	// createUploaders, and building a fresh uploader per call used to open
+	// a brand new, never-closed NATS connection (with its own internal
+	// reconnect/buffering goroutines) or a fresh http.Transport whose idle
+	// keep-alive connections were never reclaimed - both leaked memory
+	// continuously, and far more sharply during network instability, when
+	// abandoned NATS connections would sit retrying with buffered data.
+	uploaderCache = map[string]uploader{}
 )
 
 func createDispatcher() {
@@ -28,6 +41,9 @@ func createDispatcher() {
 }
 
 func createUploaders(targets []string) []uploader {
+	uploaderCacheMu.Lock()
+	defer uploaderCacheMu.Unlock()
+
 	var uploaders []uploader
 	for _, target := range targets {
 		if target == "" {
@@ -38,15 +54,25 @@ func createUploaders(targets []string) []uploader {
 			continue
 		}
 
-		if target[0:8] == "http+pow" ||  target[0:9] == "https+pow" {
-			uploaders = append(uploaders, newHTTPUploaderPow(target))
+		if cached, ok := uploaderCache[target]; ok {
+			uploaders = append(uploaders, cached)
+			continue
+		}
+
+		var u uploader
+		if target[0:8] == "http+pow" || target[0:9] == "https+pow" {
+			u = newHTTPUploaderPow(target)
 		} else if target[0:4] == "http" || target[0:5] == "https" {
-			uploaders = append(uploaders, newHTTPUploader(target))
+			u = newHTTPUploader(target)
 		} else if target[0:4] == "nats" {
-			uploaders = append(uploaders, newNATSUploader(target))
+			u = newNATSUploader(target)
 		} else {
 			log.Infof("An invalid ingest target was specified: %v", target)
+			continue
 		}
+
+		uploaderCache[target] = u
+		uploaders = append(uploaders, u)
 	}
 
 	return uploaders

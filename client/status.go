@@ -246,7 +246,7 @@ func (s *ClientStatus) setCharacter(name string) {
 // switched account/character). It shows the new name immediately and clears the
 // previous character's board-capture state, so the panel doesn't keep showing the
 // old character's "N nodes" - the Destiny Board row resets to "not captured" until
-// the new character's own event 151 arrives.
+// the new character's own board event arrives.
 func (s *ClientStatus) switchCharacter(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

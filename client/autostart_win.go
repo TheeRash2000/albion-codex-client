@@ -52,26 +52,6 @@ func autostartRegCmdLine(exe string) string {
 	return `reg add "` + autostartRunKey + `" /v ` + autostartName + ` /t REG_SZ /d "` + quoted + `" /f`
 }
 
-// upgradedFromLegacyAutostart reports whether this machine's autostart entry was
-// written by a build older than -background (0.1.16 and earlier). Read BEFORE
-// ensureAutostart rewrites it.
-//
-// It identifies the first start after an auto-update from such a build: the OLD
-// build performs the restart and passes no -background, so without this every
-// upgraded client would open its window at whatever moment the update landed,
-// mid-game included. Only that first start matches; it then rewrites the entry,
-// and a fresh install has no entry at all, so a player's own launch still opens
-// the window.
-func upgradedFromLegacyAutostart() bool {
-	v, ok := readRunValue(autostartName)
-	return ok && isLegacyAutostartValue(v)
-}
-
-// isLegacyAutostartValue: an entry with no -background flag.
-func isLegacyAutostartValue(v string) bool {
-	return !strings.Contains(v, "-"+backgroundFlag)
-}
-
 // readRunValue reads one value from the HKCU Run key (read-only).
 func readRunValue(name string) (string, bool) {
 	keyPath, err := syscall.UTF16PtrFromString(`Software\Microsoft\Windows\CurrentVersion\Run`)
