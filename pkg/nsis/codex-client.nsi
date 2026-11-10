@@ -80,9 +80,10 @@ VIAddVersionKey "LegalCopyright" "MIT licensed. Portions Copyright (c) 2017 The 
       FileClose $0
       ${ExitDo}
     ${EndIf}
+    ; A silent run cannot ask, so it stops instead of waiting forever.
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
       "${PACKAGE_NAME} is running. Quit it from its icon in the system tray, then choose Retry." \
-      IDRETRY +2
+      /SD IDCANCEL IDRETRY +2
     Abort
   ${Loop}
 !macroend
@@ -116,7 +117,7 @@ Section "Install"
   ${If} $0 == ""
     MessageBox MB_YESNO|MB_ICONINFORMATION \
       "${PACKAGE_NAME} needs Npcap to read game traffic, and Npcap does not appear to be installed.$\n$\nOpen the Npcap download page now?" \
-      IDNO +2
+      /SD IDNO IDNO +2
     ExecShell "open" "https://npcap.com/#download"
   ${EndIf}
 SectionEnd
