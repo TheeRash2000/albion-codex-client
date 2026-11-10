@@ -168,3 +168,105 @@ func TestCommas(t *testing.T) {
 		}
 	}
 }
+
+func num(v int) *int { return &v }
+
+// Where the player stands among contributors. Only ever encouraging: a place in
+// the bottom half is not shown.
+func TestStanding(t *testing.T) {
+	cases := []struct {
+		name         string
+		rank, scored *int
+		want         string
+	}{
+		{"site sends no rank", nil, nil, ""},
+		{"rank without a total", num(3), nil, ""},
+		{"first", num(1), num(86), "#1 of 86 contributors"},
+		{"tenth", num(10), num(86), "#10 of 86 contributors"},
+		{"top ten even in a tiny field", num(2), num(5), "#2 of 5 contributors"},
+		{"just outside the top ten", num(11), num(86), "top 20% of 86 contributors"},
+		{"percent rounds up to the next ten", num(34), num(86), "top 40% of 86 contributors"},
+		{"exactly half", num(43), num(86), "top 50% of 86 contributors"},
+		{"bottom half is not shown", num(44), num(86), ""},
+		{"last is not shown", num(86), num(86), ""},
+		{"too few contributors for a percentage to mean anything", num(11), num(19), ""},
+		{"nonsense: rank beyond the total", num(90), num(86), ""},
+		{"nonsense: zero", num(0), num(86), ""},
+	}
+	for _, c := range cases {
+		if got := standing(c.rank, c.scored); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestCodexPlusRowShowsStanding(t *testing.T) {
+	cases := []struct {
+		name string
+		c    *ClientContribution
+		want PlusRow
+	}{
+		{
+			// Far from the threshold the standing replaces the generic line.
+			name: "far from the threshold, top half",
+			c: &ClientContribution{Score: f64(2106), Threshold: 100000, KeepAt: 60000, Status: "below",
+				PointsToEarn: 97894, UpdatedAt: str("2026-11-09T18:00:00Z"), Rank: num(34), ScoredUsers: num(86)},
+			want: PlusRow{Title: "Codex+", Detail: "2,106 points - top 40% of 86 contributors",
+				Chip: "Learn more", Percent: -1, Updated: "Score updated 14 hours ago"},
+		},
+		{
+			name: "far from the threshold, bottom half: wording unchanged",
+			c: &ClientContribution{Score: f64(300), Threshold: 100000, KeepAt: 60000, Status: "below",
+				PointsToEarn: 99700, Rank: num(70), ScoredUsers: num(86)},
+			want: PlusRow{Title: "Codex+", Detail: "300 contribution points - top contributors earn Codex+ free",
+				Chip: "Learn more", Percent: -1},
+		},
+		{
+			// With the bar showing, the detail already carries the gap, so the
+			// standing goes on the small line under it.
+			name: "working towards it",
+			c: &ClientContribution{Score: f64(62400), Threshold: 100000, KeepAt: 60000, Status: "below",
+				PointsToEarn: 37600, UpdatedAt: str("2026-11-09T18:00:00Z"), Rank: num(4), ScoredUsers: num(86)},
+			want: PlusRow{Title: "Codex+", Detail: "62,400 / 100,000 points - 37,600 to earn it free",
+				Chip: "62%", Percent: 62, Updated: "#4 of 86 contributors - Score updated 14 hours ago"},
+		},
+		{
+			name: "earned, no update time",
+			c: &ClientContribution{Score: f64(120000), Threshold: 100000, KeepAt: 60000, Status: "earned",
+				Earned: true, CodexPlus: true, Rank: num(1), ScoredUsers: num(86)},
+			want: PlusRow{Title: "Codex+ earned", Detail: "120,000 points - yours while you stay above 60,000",
+				Chip: "Earned", Percent: 100, Held: true, Updated: "#1 of 86 contributors"},
+		},
+		{
+			name: "paid member",
+			c: &ClientContribution{Score: f64(5000), Threshold: 100000, KeepAt: 60000, Status: "below",
+				PointsToEarn: 95000, CodexPlus: true, Rank: num(20), ScoredUsers: num(86)},
+			want: PlusRow{Title: "Codex+ active", Detail: "Contribution: 5,000 / 100,000 points", Chip: "Active",
+				Percent: -1, Held: true, Updated: "Top 30% of 86 contributors"},
+		},
+	}
+	for _, c := range cases {
+		if got := codexPlusRow(c.c, plusNow); got != c.want {
+			t.Errorf("%s:\n got  %+v\n want %+v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestClientStatsRankDecodes(t *testing.T) {
+	var s ClientStats
+	raw := `{"contribution":{"score":2106,"threshold":100000,"keepAt":60000,"status":"below","pointsToEarn":97894,"rank":34,"scoredUsers":86}}`
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+		t.Fatal(err)
+	}
+	c := s.Contribution
+	if c == nil || c.Rank == nil || *c.Rank != 34 || c.ScoredUsers == nil || *c.ScoredUsers != 86 {
+		t.Fatalf("rank decoded wrong: %+v", c)
+	}
+	var old ClientStats
+	if err := json.Unmarshal([]byte(`{"contribution":{"score":1,"threshold":100000,"rank":null,"scoredUsers":null}}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.Contribution.Rank != nil || old.Contribution.ScoredUsers != nil {
+		t.Errorf("null rank should stay nil: %+v", old.Contribution)
+	}
+}

@@ -3,6 +3,7 @@ package client
 import (
 	"math"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,10 @@ type ClientContribution struct {
 	Earned       bool     `json:"earned"`    // held through the contributor grant
 	CodexPlus    bool     `json:"codexPlus"` // held at all (earned, paid or gifted)
 	UpdatedAt    *string  `json:"updatedAt"` // the score is recomputed once a day
+	// The owner's place among accounts with a score (1 = highest) and how many
+	// there are. Both nil when the site sends none.
+	Rank        *int `json:"rank"`
+	ScoredUsers *int `json:"scoredUsers"`
 }
 
 // PlusRow is what the panel's Codex+ row shows.
@@ -79,11 +84,56 @@ func codexPlusRow(c *ClientContribution, now time.Time) PlusRow {
 	case far:
 		row.Title, row.Chip = "Codex+", "Learn more"
 		row.Detail = commas(score) + " contribution points - top contributors earn Codex+ free"
+		// A standing says more than the generic line, when there is one to show.
+		if place := standing(c.Rank, c.ScoredUsers); place != "" {
+			row.Detail = commas(score) + " points - " + place
+		}
+		return row
 	default:
 		row.Title, row.Chip = "Codex+", strconv.Itoa(pct)+"%"
 		row.Detail = commas(score) + " / " + commas(c.Threshold) + " points - " + commas(c.PointsToEarn) + " to earn it free"
 	}
+	// Every other row already uses its detail line, so the standing goes on the
+	// small line with the score's age.
+	if place := standing(c.Rank, c.ScoredUsers); place != "" && score > 0 {
+		place = strings.ToUpper(place[:1]) + place[1:]
+		if row.Updated != "" {
+			row.Updated = place + " - " + row.Updated
+		} else {
+			row.Updated = place
+		}
+	}
 	return row
+}
+
+// Limits for showing a standing. A percentage over a handful of accounts means
+// little, and a place in the bottom half only discourages.
+const (
+	standingTopN       = 10 // shown as "#4 of 86"
+	standingMinScored  = 20 // fewer than this: no percentage
+	standingMaxPercent = 50 // below the top half: not shown
+)
+
+// standing words the owner's place among contributors: "#4 of 86 contributors"
+// for the top ten, "top 40% of 86 contributors" for the rest of the top half
+// (rounded up to the next ten), and nothing otherwise.
+func standing(rank, scored *int) string {
+	if rank == nil || scored == nil || *rank < 1 || *scored < 1 || *rank > *scored {
+		return ""
+	}
+	of := " of " + commas(float64(*scored)) + " contributors"
+	if *rank <= standingTopN {
+		return "#" + strconv.Itoa(*rank) + of
+	}
+	if *scored < standingMinScored {
+		return ""
+	}
+	pct := int(math.Ceil(float64(*rank) / float64(*scored) * 100))
+	if pct > standingMaxPercent {
+		return ""
+	}
+	pct = (pct + 9) / 10 * 10
+	return "top " + strconv.Itoa(pct) + "%" + of
 }
 
 // scoreUpdated says how old the score is ("Score updated 14 hours ago"), since
