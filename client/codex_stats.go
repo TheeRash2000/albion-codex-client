@@ -64,7 +64,10 @@ type ClientStats struct {
 	// The owner's Codex+ contribution. Nil when the site does not send it (an
 	// older deploy, or its read failed): the panel then shows no numbers.
 	Contribution *ClientContribution `json:"contribution"`
-	Cities       []struct {
+	// The owner's market sales and purchases totals. Nil when the site does not
+	// send them: the panel then shows no ledger card.
+	Ledger *ClientLedger `json:"ledger"`
+	Cities []struct {
 		City       string `json:"city"`
 		Server     string `json:"server"`
 		Rows       int64  `json:"rows"`

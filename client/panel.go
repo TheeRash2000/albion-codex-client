@@ -117,6 +117,10 @@ func StartPanel() {
 		OpenBrowser(CodexPlusURL())
 		writeJSON(w, map[string]bool{"ok": true})
 	})
+	mux.HandleFunc("/api/open-ledger", func(w http.ResponseWriter, r *http.Request) {
+		OpenBrowser(ledgerURL(CachedClientStats()))
+		writeJSON(w, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("/api/open-npcap", func(w http.ResponseWriter, r *http.Request) {
 		OpenBrowser("https://npcap.com/#download")
 		writeJSON(w, map[string]bool{"ok": true})

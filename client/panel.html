@@ -128,6 +128,15 @@ body{
   border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px;flex:none}
 .plus.held .chip{color:var(--lx-gold-bright);border-color:var(--lx-gold-deep)}
 
+/* ---- ledger card: sold and bought totals ---- */
+.ledger{padding:11px 13px}
+.ledger .lw{font-size:13px;color:var(--lx-parch)}
+.ledger .lm{font-size:12.5px;color:var(--lx-parch-dim);margin-top:3px}
+.ledger .lf{font-size:11px;color:var(--lx-muted);font-style:italic;margin-top:6px}
+.ledger .llink{display:inline-block;margin-top:8px;padding:0;background:none;border:none;cursor:pointer;
+  font-family:var(--cin);font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--lx-gold)}
+.ledger .llink:hover{color:var(--lx-gold-bright)}
+
 /* ---- bounties ---- */
 .bnote{padding:10px 13px 4px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic;line-height:1.45}
 .bq{font-family:var(--cin);font-size:11px;color:var(--lx-gold-bright);min-width:56px;text-align:right;flex:none}
@@ -244,6 +253,17 @@ body{
   <div class="card hidden" id="issuesCard">
     <div class="chead"><span class="eyebrow">Issues</span></div>
     <div class="feed" id="issues"></div>
+  </div>
+
+  <!-- Market sales and purchases totals. Hidden until the site sends a ledger. -->
+  <div class="card hidden" id="ledgerCard">
+    <div class="chead"><span class="eyebrow">Your ledger</span></div>
+    <div class="ledger">
+      <div class="lw" id="ledgerWeek"></div>
+      <div class="lm hidden" id="ledgerMonth"></div>
+      <div class="lf hidden" id="ledgerFooter"></div>
+      <button class="llink" id="ledgerLink" type="button"></button>
+    </div>
   </div>
 
   <div class="card">
@@ -461,6 +481,21 @@ function render(s) {
    so it is polled slowly and the host only refetches when its cache is over an
    hour old. Renders nothing at all until data arrives, so an offline or
    unpaired client simply shows the session numbers rather than an error. */
+/* The ledger card. Wording comes from the host (codex_ledger_card.go). No card
+   from the host means the site sent no ledger, and the card stays hidden: it is
+   never shown with zeros. */
+function renderLedger(c) {
+  const card = $('ledgerCard');
+  if (!c || !c.week) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  $('ledgerWeek').textContent = c.week;
+  const line = (id, text) => { const el = $(id); el.textContent = text || ''; el.classList.toggle('hidden', !text); };
+  line('ledgerMonth', c.month);
+  line('ledgerFooter', c.footer);
+  $('ledgerLink').textContent = c.link || '';
+}
+$('ledgerLink').onclick = () => api('/api/open-ledger', { method: 'POST' });
+
 /* The Codex+ row. The host works out the wording (codex_plus_row.go); this only
    places it. With nothing from the host the markup's own fallback stays. */
 const PLUS_FALLBACK = { title: 'Codex+', detail: 'Earn it free by contributing with this client', chip: 'Learn more', percent: -1, held: false, updated: '' };
@@ -485,6 +520,7 @@ function renderAccount(s) {
   const covCard = $('coverageCard');
 
   renderPlus(s && s.plus);
+  renderLedger(s && s.ledgerCard);
 
   if (!s || !s.captures) {
     acct.replaceChildren();

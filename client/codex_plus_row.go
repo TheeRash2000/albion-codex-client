@@ -182,7 +182,8 @@ func commas(v float64) string {
 // Codex+ row derived from them.
 type panelStatsBody struct {
 	*ClientStats
-	Plus PlusRow `json:"plus"`
+	Plus       PlusRow     `json:"plus"`
+	LedgerCard *LedgerCard `json:"ledgerCard"`
 }
 
 // panelStats builds that response. Nil until stats have been fetched, which the
@@ -191,7 +192,12 @@ func panelStats(s *ClientStats, now time.Time) *panelStatsBody {
 	if s == nil {
 		return nil
 	}
-	return &panelStatsBody{ClientStats: s, Plus: codexPlusRow(s.Contribution, now)}
+	member := s.Contribution != nil && s.Contribution.CodexPlus
+	return &panelStatsBody{
+		ClientStats: s,
+		Plus:        codexPlusRow(s.Contribution, now),
+		LedgerCard:  ledgerCard(s.Ledger, member),
+	}
 }
 
 // CodexPlusURL is the Codex page that explains Codex+ and how it is earned.
