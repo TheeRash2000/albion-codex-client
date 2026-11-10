@@ -26,6 +26,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Install NSIS (builds the installer)
+        run: choco install nsis -y --no-progress
+
       - name: Build exe and installer
         shell: pwsh
         run: ./scripts/build-codex.ps1 -Version 0.0.0 -NoCgo

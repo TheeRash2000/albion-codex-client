@@ -30,6 +30,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Install NSIS (builds the installer)
+        run: choco install nsis -y --no-progress
+
       - name: Build exe, installer and version.json
         shell: pwsh
         run: |
