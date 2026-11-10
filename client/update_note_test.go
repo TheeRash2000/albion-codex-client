@@ -2,49 +2,61 @@ package client
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// After a self-update the next start shows the release note once. The note is
-// saved by the updater before it restarts and consumed on the next start.
-func TestUpdateNoteShownOnceForTheVersionItWasSavedFor(t *testing.T) {
-	s := withPendingUpdateNote(codexSettings{}, "alpha-0.1.20", "Your Codex+ progress now shows in this window")
+// A self-update is silent, so the first start of a new build says once what
+// changed. The NEW build works this out for itself: an older build cannot be
+// relied on to leave anything behind (0.1.19 and earlier have no such code).
 
-	line, cleared, changed := takeUpdateNote(s, "alpha-0.1.20")
-	if line != "Updated to alpha-0.1.20 - Your Codex+ progress now shows in this window" {
-		t.Errorf("line = %q", line)
+// justUpdated decides whether this start follows an update, from the version
+// this install last ran and whether the updater's leftover file is present.
+func TestJustUpdated(t *testing.T) {
+	cases := []struct {
+		name      string
+		lastRun   string
+		running   string
+		oldBinary bool
+		want      bool
+	}{
+		{"same build as last time", "alpha-0.1.20", "alpha-0.1.20", true, false},
+		{"updated from a build that recorded its version", "alpha-0.1.20", "alpha-0.1.21", false, true},
+		// 0.1.19 and earlier never recorded a version. The updater leaves the old
+		// exe beside the new one, which a fresh install does not have.
+		{"updated from a build that recorded nothing", "", "alpha-0.1.20", true, true},
+		{"fresh install", "", "alpha-0.1.20", false, false},
+		{"local build with no version", "alpha-0.1.20", "dev", true, false},
+		{"unversioned build", "alpha-0.1.20", "", true, false},
 	}
-	if !changed || cleared.PendingUpdateNote != nil {
-		t.Errorf("note not cleared after showing: changed=%v note=%+v", changed, cleared.PendingUpdateNote)
-	}
-
-	// The start after that has nothing to show.
-	if line, _, changed := takeUpdateNote(cleared, "alpha-0.1.20"); line != "" || changed {
-		t.Errorf("shown again: %q (changed=%v)", line, changed)
+	for _, c := range cases {
+		if got := justUpdated(c.lastRun, c.running, c.oldBinary); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
-func TestUpdateNoteNotShownWhenItDoesNotApply(t *testing.T) {
+// The note is the published manifest's, and only when that manifest describes
+// the build that is running.
+func TestUpdateNoteLine(t *testing.T) {
 	cases := []struct {
-		name    string
-		s       codexSettings
-		running string
+		name            string
+		running         string
+		manifestVersion string
+		notes           string
+		want            string
 	}{
-		{"fresh install: nothing saved", codexSettings{}, "alpha-0.1.20"},
-		{"saved for a different build than the one running", withPendingUpdateNote(codexSettings{}, "alpha-0.1.20", "note"), "alpha-0.1.21"},
-		{"release had no note", withPendingUpdateNote(codexSettings{}, "alpha-0.1.20", ""), "alpha-0.1.20"},
-		{"note is only whitespace", withPendingUpdateNote(codexSettings{}, "alpha-0.1.20", "  \n "), "alpha-0.1.20"},
+		{"the manifest describes this build", "alpha-0.1.20", "alpha-0.1.20", "Your Codex+ progress now shows in this window",
+			"Updated to alpha-0.1.20 - Your Codex+ progress now shows in this window"},
+		{"a newer release is already out: its note is not ours", "alpha-0.1.20", "alpha-0.1.21", "Something else", ""},
+		{"running a build newer than the published one", "alpha-0.1.21", "alpha-0.1.20", "Old note", ""},
+		{"the release had no note", "alpha-0.1.20", "alpha-0.1.20", "", ""},
+		{"the note is only whitespace", "alpha-0.1.20", "alpha-0.1.20", "  \n ", ""},
 	}
 	for _, c := range cases {
-		line, cleared, _ := takeUpdateNote(c.s, c.running)
-		if line != "" {
-			t.Errorf("%s: showed %q", c.name, line)
-		}
-		// Whatever was pending is dropped either way, so a stale note can never
-		// surface on some later start.
-		if cleared.PendingUpdateNote != nil {
-			t.Errorf("%s: pending note left behind: %+v", c.name, cleared.PendingUpdateNote)
+		if got := updateNoteLine(c.running, c.manifestVersion, c.notes); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}
 }
@@ -53,27 +65,23 @@ func TestUpdateNoteNotShownWhenItDoesNotApply(t *testing.T) {
 // plain text whatever it contains.
 func TestUpdateNoteIsOneShortLine(t *testing.T) {
 	long := strings.Repeat("word ", 60)
-	line, _, _ := takeUpdateNote(withPendingUpdateNote(codexSettings{}, "alpha-0.1.20", long), "alpha-0.1.20")
+	line := updateNoteLine("alpha-0.1.20", "alpha-0.1.20", long)
 	note := strings.TrimPrefix(line, "Updated to alpha-0.1.20 - ")
 	if n := len([]rune(note)); n > updateNoteMaxRunes {
 		t.Errorf("note is %d characters, limit %d", n, updateNoteMaxRunes)
 	}
 
-	line, _, _ = takeUpdateNote(withPendingUpdateNote(codexSettings{}, "alpha-0.1.20", "first line\r\nsecond\tline"), "alpha-0.1.20")
-	if strings.ContainsAny(line, "\r\n\t") {
-		t.Errorf("control characters survived: %q", line)
-	}
+	line = updateNoteLine("alpha-0.1.20", "alpha-0.1.20", "first line\r\nsecond\tline")
 	if line != "Updated to alpha-0.1.20 - first line second line" {
 		t.Errorf("line = %q", line)
 	}
 }
 
-// Saving a note must not disturb the player's other settings, and a settings
-// file written by an older build (no note field) must still load.
-func TestUpdateNoteLivesBesideOtherSettings(t *testing.T) {
+// Recording the version must not disturb the player's other settings, and a
+// settings file written by an older build must still load.
+func TestLastRunVersionLivesBesideOtherSettings(t *testing.T) {
 	off := false
-	s := withPendingUpdateNote(codexSettings{AODPUpload: &off}, "alpha-0.1.20", "note")
-	b, err := json.Marshal(s)
+	b, err := json.Marshal(codexSettings{AODPUpload: &off, LastRunVersion: "alpha-0.1.20"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,13 +92,21 @@ func TestUpdateNoteLivesBesideOtherSettings(t *testing.T) {
 	if back.AODPUpload == nil || *back.AODPUpload != false {
 		t.Error("the AODP opt-out was lost")
 	}
-	if back.PendingUpdateNote == nil || back.PendingUpdateNote.Version != "alpha-0.1.20" || back.PendingUpdateNote.Note != "note" {
-		t.Errorf("note did not round-trip: %+v", back.PendingUpdateNote)
+	if back.LastRunVersion != "alpha-0.1.20" {
+		t.Errorf("last run version = %q", back.LastRunVersion)
 	}
 
 	var old codexSettings
-	if err := json.Unmarshal([]byte(`{"aodp_upload":false}`), &old); err != nil || old.PendingUpdateNote != nil {
-		t.Errorf("older settings file: err=%v note=%+v", err, old.PendingUpdateNote)
+	if err := json.Unmarshal([]byte(`{"aodp_upload":false}`), &old); err != nil || old.LastRunVersion != "" {
+		t.Errorf("older settings file: err=%v last=%q", err, old.LastRunVersion)
+	}
+}
+
+// The updater's leftover is the old exe, renamed and hidden beside the new one.
+func TestOldBinaryPath(t *testing.T) {
+	got := oldBinaryPath(filepath.Join("CodexClient", "codex-client.exe"))
+	if got != filepath.Join("CodexClient", ".codex-client.exe.old") {
+		t.Errorf("old binary path = %q", got)
 	}
 }
 

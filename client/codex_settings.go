@@ -56,9 +56,9 @@ type codexSettings struct {
 	// an explicit false is honoured across restarts.
 	MarketUpload *bool `json:"market_upload,omitempty"`
 
-	// The release note saved by a self-update, to show once on the next start
-	// (update_note.go). Absent except between an update and that start.
-	PendingUpdateNote *pendingUpdateNote `json:"pending_update_note,omitempty"`
+	// The version this install last ran, so a new build can tell it has just been
+	// updated and say once what changed (update_note.go).
+	LastRunVersion string `json:"last_run_version,omitempty"`
 }
 
 // aodpUploadOrDefault resolves the tri-state: an explicit choice wins, absence

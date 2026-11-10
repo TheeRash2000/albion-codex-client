@@ -138,7 +138,6 @@ func checkForUpdate(currentVersion string) {
 
 	log.Infof("Codex updater: updated to %s; restarting.", m.Version)
 	Status.addActivity("Updated to " + m.Version + "; restarting")
-	savePendingUpdateNote(m.Version, m.Notes)
 	restartAfterUpdate()
 }
 

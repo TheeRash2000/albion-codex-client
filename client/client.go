@@ -78,8 +78,9 @@ func (client *Client) Run() error {
 		// Albion (the game only sends the board/market data while capturing).
 		ensureAutostart()
 
-		// If this start follows a self-update, say once what changed.
-		showPendingUpdateNote(version)
+		// If this start follows an update, say once what changed. In the
+		// background: it reads the published manifest.
+		go announceUpdate(version)
 
 		// Start the Codex upload delivery queue (retry with backoff) before any
 		// capture path enqueues to it. Idempotent.
