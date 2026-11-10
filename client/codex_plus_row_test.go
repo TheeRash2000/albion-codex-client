@@ -57,9 +57,31 @@ func TestCodexPlusRow(t *testing.T) {
 				Chip: "62%", Percent: 62, Updated: "Score updated 14 hours ago"},
 		},
 		{
+			// A bar at 0% and "100,000 to go" tells a new player nothing useful.
 			name: "just linked, nothing scored yet",
 			c:    &ClientContribution{Score: nil, Threshold: 100000, KeepAt: 60000, Status: "below", PointsToEarn: 100000},
-			want: PlusRow{Title: "Codex+", Detail: "0 / 100,000 points - 100,000 to earn it free", Chip: "0%", Percent: 0},
+			want: PlusRow{Title: "Codex+", Detail: "Earn it free by contributing with this client", Chip: "Learn more", Percent: -1},
+		},
+		{
+			// Far from the threshold the points are
+			// shown, without a near-empty bar or a five-figure gap that reads as
+			// unreachable.
+			name: "contributing, far from the threshold",
+			c: &ClientContribution{Score: f64(2106), Threshold: 100000, KeepAt: 60000, Status: "below",
+				PointsToEarn: 97894, UpdatedAt: str("2026-11-09T18:00:00Z")},
+			want: PlusRow{Title: "Codex+", Detail: "2,106 contribution points - top contributors earn Codex+ free",
+				Chip: "Learn more", Percent: -1, Updated: "Score updated 14 hours ago"},
+		},
+		{
+			name: "one point under where the bar starts",
+			c:    &ClientContribution{Score: f64(9999), Threshold: 100000, KeepAt: 60000, Status: "below", PointsToEarn: 90001},
+			want: PlusRow{Title: "Codex+", Detail: "9,999 contribution points - top contributors earn Codex+ free",
+				Chip: "Learn more", Percent: -1},
+		},
+		{
+			name: "where the bar starts",
+			c:    &ClientContribution{Score: f64(10000), Threshold: 100000, KeepAt: 60000, Status: "below", PointsToEarn: 90000},
+			want: PlusRow{Title: "Codex+", Detail: "10,000 / 100,000 points - 90,000 to earn it free", Chip: "10%", Percent: 10},
 		},
 		{
 			name: "over the line, waiting for the daily update to grant it",
@@ -86,7 +108,14 @@ func TestCodexPlusRow(t *testing.T) {
 			c: &ClientContribution{Score: f64(5000), Threshold: 100000, KeepAt: 60000, Status: "below",
 				PointsToEarn: 95000, CodexPlus: true},
 			want: PlusRow{Title: "Codex+ active", Detail: "Contribution: 5,000 / 100,000 points", Chip: "Active",
-				Percent: 5, Held: true},
+				Percent: -1, Held: true},
+		},
+		{
+			name: "paid member, well on the way to earning it",
+			c: &ClientContribution{Score: f64(45000), Threshold: 100000, KeepAt: 60000, Status: "below",
+				PointsToEarn: 55000, CodexPlus: true},
+			want: PlusRow{Title: "Codex+ active", Detail: "Contribution: 45,000 / 100,000 points", Chip: "Active",
+				Percent: 45, Held: true},
 		},
 		{
 			name: "nonsense threshold is treated as no data",

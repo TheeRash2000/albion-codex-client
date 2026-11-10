@@ -31,6 +31,10 @@ type PlusRow struct {
 	Updated string `json:"updated,omitempty"`
 }
 
+// plusBarFrom is the share of the threshold (in percent) from which the row
+// shows a progress bar and the points still needed.
+const plusBarFrom = 10
+
 // codexPlusRow turns the site's contribution into the panel row. With no
 // contribution (an older site, or the read failed) it is a plain pointer to
 // Codex+ with no numbers, never a zero score.
@@ -47,6 +51,13 @@ func codexPlusRow(c *ClientContribution, now time.Time) PlusRow {
 		pct = 100
 	}
 	row := PlusRow{Percent: pct, Updated: scoreUpdated(c.UpdatedAt, now)}
+	// Far from the threshold a bar is a sliver and the gap a five-figure number:
+	// accurate, but it reads as unreachable. Below plusBarFrom the row shows the
+	// points without the bar or the gap. Earned rows always show the bar.
+	far := pct < plusBarFrom
+	if far && !c.Earned {
+		row.Percent = -1
+	}
 
 	switch {
 	case c.Earned && c.Status == "keeping":
@@ -62,6 +73,12 @@ func codexPlusRow(c *ClientContribution, now time.Time) PlusRow {
 		// Over the threshold, but the grant is only written by the daily recompute.
 		row.Title, row.Chip = "Codex+", strconv.Itoa(pct)+"%"
 		row.Detail = commas(score) + " / " + commas(c.Threshold) + " points - granted at the next daily update"
+	case score <= 0:
+		row.Title, row.Chip = "Codex+", "Learn more"
+		row.Detail = "Earn it free by contributing with this client"
+	case far:
+		row.Title, row.Chip = "Codex+", "Learn more"
+		row.Detail = commas(score) + " contribution points - top contributors earn Codex+ free"
 	default:
 		row.Title, row.Chip = "Codex+", strconv.Itoa(pct)+"%"
 		row.Detail = commas(score) + " / " + commas(c.Threshold) + " points - " + commas(c.PointsToEarn) + " to earn it free"
