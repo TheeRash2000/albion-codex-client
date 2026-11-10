@@ -5,32 +5,61 @@ package client
 import (
 	"flag"
 	"fmt"
-	"reflect"
+	"os"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-// The Run-key value must come out of reg.exe as exactly `"<exe>" -background`.
-// Decoded with the Windows command-line parser (CommandLineToArgvW), which is how
-// reg.exe reads its arguments.
-func TestAutostartRegCommandLine(t *testing.T) {
+// The autostart value must be stored in the registry as exactly
+// `"<exe>" -background`, quotes included, and read back unchanged. Written to a
+// throwaway key under HKCU\Software, never the real Run key.
+func TestAutostartValueRoundTripsThroughRegistry(t *testing.T) {
+	subkey := fmt.Sprintf(`Software\CodexClientTest-%d`, time.Now().UnixNano())
+	keyPath, err := syscall.UTF16PtrFromString(subkey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer modadvapi32.NewProc("RegDeleteKeyW").Call(
+		uintptr(syscall.HKEY_CURRENT_USER), uintptr(unsafe.Pointer(keyPath)))
+
+	if _, ok := readUserRegString(subkey, autostartName); ok {
+		t.Fatal("value present before it was written")
+	}
 	for _, exe := range []string{
 		`C:\Program Files\Codex Client\codex-client.exe`,
 		`C:\Users\Player\OneDrive\Desktop\codex-client.exe`,
 		`D:\games\codex.exe`,
 	} {
-		args, err := windows.DecomposeCommandLine(autostartRegCmdLine(exe))
-		if err != nil {
+		want := autostartValue(exe)
+		if want != `"`+exe+`" -background` {
+			t.Errorf("stored value = %q", want)
+		}
+		// Each write replaces the previous one, as when the exe is moved.
+		if err := writeUserRegString(subkey, autostartName, want); err != nil {
 			t.Fatalf("%s: %v", exe, err)
 		}
-		want := []string{"reg", "add", autostartRunKey, "/v", autostartName, "/t", "REG_SZ", "/d", autostartValue(exe), "/f"}
-		if !reflect.DeepEqual(args, want) {
-			t.Errorf("%s:\n got  %q\n want %q", exe, args, want)
+		got, ok := readUserRegString(subkey, autostartName)
+		if !ok || got != want {
+			t.Errorf("%s:\n got  %q (found=%v)\n want %q", exe, got, ok, want)
 		}
-		if v := autostartValue(exe); v != `"`+exe+`" -background` {
-			t.Errorf("stored value = %q", v)
+	}
+}
+
+// Registering autostart must not start another program. Spawning a hidden
+// reg.exe to write the Run key is what antivirus heuristics flag as persistence.
+func TestAutostartDoesNotSpawnProcesses(t *testing.T) {
+	src, err := os.ReadFile("autostart_win.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{`"os/exec"`, "exec.Command", "HideWindow"} {
+		if strings.Contains(string(src), banned) {
+			t.Errorf("autostart_win.go uses %s", banned)
 		}
 	}
 }

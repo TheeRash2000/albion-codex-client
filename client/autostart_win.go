@@ -3,18 +3,26 @@
 package client
 
 import (
+	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
 
 	"github.com/ao-data/albiondata-client/log"
+	"golang.org/x/sys/windows"
 )
 
-const autostartRunKey = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+// autostartRunSubkey is the per-user Run key, relative to HKEY_CURRENT_USER.
+const autostartRunSubkey = `Software\Microsoft\Windows\CurrentVersion\Run`
 const autostartName = "CodexClient"
+
+var (
+	modadvapi32         = windows.NewLazySystemDLL("advapi32.dll")
+	procRegCreateKeyExW = modadvapi32.NewProc("RegCreateKeyExW")
+	procRegSetValueExW  = modadvapi32.NewProc("RegSetValueExW")
+)
 
 // isVolatileExePath reports whether exe lives in a folder Windows can wipe between
 // sessions (a temp dir). Registering autostart to such a path is how the entry
@@ -43,18 +51,9 @@ func autostartValue(exe string) string {
 	return `"` + exe + `" -` + backgroundFlag
 }
 
-// autostartRegCmdLine is the exact reg.exe command line that stores
-// autostartValue. Written out rather than left to exec's argument escaping, so
-// the value's embedded quotes are encoded one known way (\" inside a quoted
-// argument, the rule reg.exe parses with). Tested by decoding it back.
-func autostartRegCmdLine(exe string) string {
-	quoted := strings.ReplaceAll(autostartValue(exe), `"`, `\"`)
-	return `reg add "` + autostartRunKey + `" /v ` + autostartName + ` /t REG_SZ /d "` + quoted + `" /f`
-}
-
-// readRunValue reads one value from the HKCU Run key (read-only).
-func readRunValue(name string) (string, bool) {
-	keyPath, err := syscall.UTF16PtrFromString(`Software\Microsoft\Windows\CurrentVersion\Run`)
+// readUserRegString reads one string value under HKEY_CURRENT_USER (read-only).
+func readUserRegString(subkey, name string) (string, bool) {
+	keyPath, err := syscall.UTF16PtrFromString(subkey)
 	if err != nil {
 		return "", false
 	}
@@ -82,11 +81,60 @@ func readRunValue(name string) (string, bool) {
 	return syscall.UTF16ToString(buf), true
 }
 
+// writeUserRegString stores one REG_SZ value under HKEY_CURRENT_USER through the
+// registry API. The value is passed as data, never through a command line, so
+// its embedded quotes need no escaping. Earlier builds shelled out to a hidden
+// reg.exe for this; an unsigned program doing that is what antivirus heuristics
+// read as malware persistence, and it is not how installed apps register.
+func writeUserRegString(subkey, name, value string) error {
+	keyPath, err := syscall.UTF16PtrFromString(subkey)
+	if err != nil {
+		return err
+	}
+	valueName, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return err
+	}
+	data, err := syscall.UTF16FromString(value)
+	if err != nil {
+		return err
+	}
+
+	var k syscall.Handle
+	// Opens the key, creating it only if it is missing (the Run key always exists).
+	if rc, _, _ := procRegCreateKeyExW.Call(
+		uintptr(syscall.HKEY_CURRENT_USER),
+		uintptr(unsafe.Pointer(keyPath)),
+		0, 0, 0,
+		uintptr(syscall.KEY_SET_VALUE),
+		0,
+		uintptr(unsafe.Pointer(&k)),
+		0,
+	); rc != 0 {
+		return fmt.Errorf("open HKCU\\%s: %w", subkey, syscall.Errno(rc))
+	}
+	defer syscall.RegCloseKey(k)
+
+	// Size is in bytes and includes the terminating NUL.
+	if rc, _, _ := procRegSetValueExW.Call(
+		uintptr(k),
+		uintptr(unsafe.Pointer(valueName)),
+		0,
+		uintptr(syscall.REG_SZ),
+		uintptr(unsafe.Pointer(&data[0])),
+		uintptr(len(data)*2),
+	); rc != 0 {
+		return fmt.Errorf("set %s: %w", name, syscall.Errno(rc))
+	}
+	return nil
+}
+
 // ensureAutostart registers the client to launch at Windows login (HKCU Run key),
 // so it is already capturing before the player logs into Albion - the game only
 // sends the Destiny Board (and market data) while the client is running. It points
-// the entry at the CURRENT exe path and overwrites any prior value, so moving the
-// exe just updates it on the next run. Best-effort; failures are non-fatal.
+// the entry at the CURRENT exe path, so moving the exe just updates it on the next
+// run, and writes nothing when the entry is already correct. Best-effort; failures
+// are non-fatal.
 func ensureAutostart() {
 	exe, err := os.Executable()
 	if err != nil {
@@ -99,9 +147,11 @@ func ensureAutostart() {
 		log.Debugf("Autostart: running from a temp folder (%s); leaving the existing autostart entry untouched.", exe)
 		return
 	}
-	cmd := exec.Command("reg")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CmdLine: autostartRegCmdLine(exe)}
-	if err := cmd.Run(); err != nil {
+	want := autostartValue(exe)
+	if have, ok := readUserRegString(autostartRunSubkey, autostartName); ok && have == want {
+		return
+	}
+	if err := writeUserRegString(autostartRunSubkey, autostartName, want); err != nil {
 		log.Debugf("Autostart: could not register: %v", err)
 		return
 	}
