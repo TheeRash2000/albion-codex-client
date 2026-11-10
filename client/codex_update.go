@@ -20,11 +20,21 @@ import (
 	"github.com/minio/selfupdate"
 )
 
-// defaultUpdateManifestURL is the public Supabase Storage object that describes the
-// latest published build. The build script (scripts/build-codex.ps1) emits this
-// version.json next to the exe; both are uploaded to the "client" bucket.
+// updateManifestURLs are the places the latest build's version.json is published,
+// tried in order; the first one that answers with a manifest wins.
+//
+//  1. The latest GitHub release of the public client repo, where releases are
+//     built from the published source.
+//  2. The Supabase Storage "client" bucket that builds up to alpha-0.1.18 were
+//     served from (scripts/build-codex.ps1 emits its version.json). Kept so the
+//     updater keeps working until the first GitHub release exists; remove it
+//     once every supported build has moved across.
+//
 // Overridable via CODEX_UPDATE_MANIFEST_URL for testing against a staging file.
-const defaultUpdateManifestURL = "https://blpjzxfbjwxrdfzeqxhl.supabase.co/storage/v1/object/public/client/version.json"
+var updateManifestURLs = []string{
+	"https://github.com/TheeRash2000/albion-codex-client/releases/latest/download/version.json",
+	"https://blpjzxfbjwxrdfzeqxhl.supabase.co/storage/v1/object/public/client/version.json",
+}
 
 const (
 	updateInitialDelay = 45 * time.Second // let capture settle before the first check
@@ -73,11 +83,11 @@ func startCodexUpdater(currentVersion string) {
 	}()
 }
 
-func manifestURL() string {
+func manifestURLs() []string {
 	if u := strings.TrimSpace(os.Getenv("CODEX_UPDATE_MANIFEST_URL")); u != "" {
-		return u
+		return []string{u}
 	}
-	return defaultUpdateManifestURL
+	return updateManifestURLs
 }
 
 func checkForUpdate(currentVersion string) {
@@ -143,8 +153,27 @@ func manifestChecksum(m *updateManifest) ([]byte, error) {
 	return sum, nil
 }
 
+// fetchManifest returns the manifest from the first source that serves one. A
+// source that is unreachable, missing or unparseable is skipped; the error
+// returned when all fail is the last one seen.
 func fetchManifest() (*updateManifest, error) {
-	req, err := http.NewRequest(http.MethodGet, manifestURL(), nil)
+	var lastErr error
+	for _, u := range manifestURLs() {
+		m, err := fetchManifestFrom(u)
+		if err == nil {
+			return m, nil
+		}
+		log.Debugf("Codex updater: no manifest at %s: %v", u, err)
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no manifest source configured")
+	}
+	return nil, lastErr
+}
+
+func fetchManifestFrom(url string) (*updateManifest, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

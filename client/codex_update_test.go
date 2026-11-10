@@ -1,9 +1,73 @@
 package client
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
+
+// The updater reads the first manifest source that serves one and falls back to
+// the next when a source is missing, so builds keep updating while releases
+// move from one host to another.
+func TestFetchManifestUsesFirstSourceThatAnswers(t *testing.T) {
+	t.Setenv("CODEX_UPDATE_MANIFEST_URL", "")
+	var hits [2]int
+	missing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits[0]++
+		http.NotFound(w, r)
+	}))
+	defer missing.Close()
+	serves := func(i int, version string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits[i]++
+			fmt.Fprintf(w, `{"version":%q,"url":"https://example.com/c.exe","sha256":"00"}`, version)
+		}))
+	}
+	primary := serves(0, "alpha-0.2.0")
+	defer primary.Close()
+	fallback := serves(1, "alpha-0.1.18")
+	defer fallback.Close()
+
+	prev := updateManifestURLs
+	defer func() { updateManifestURLs = prev }()
+
+	// Primary has no release yet: the fallback's manifest is used.
+	updateManifestURLs = []string{missing.URL, fallback.URL}
+	m, err := fetchManifest()
+	if err != nil || m.Version != "alpha-0.1.18" {
+		t.Fatalf("fallback: got %+v, err %v", m, err)
+	}
+	if hits != [2]int{1, 1} {
+		t.Errorf("fallback: requests = %v, want one to each source", hits)
+	}
+
+	// Primary answers: the fallback is never asked.
+	hits = [2]int{}
+	updateManifestURLs = []string{primary.URL, fallback.URL}
+	m, err = fetchManifest()
+	if err != nil || m.Version != "alpha-0.2.0" {
+		t.Fatalf("primary: got %+v, err %v", m, err)
+	}
+	if hits != [2]int{1, 0} {
+		t.Errorf("primary: requests = %v, want only the first source", hits)
+	}
+
+	// Nothing answers: an error, not a nil manifest.
+	updateManifestURLs = []string{missing.URL}
+	if m, err := fetchManifest(); err == nil {
+		t.Fatalf("all sources missing: got %+v, want an error", m)
+	}
+}
+
+// An explicit override replaces the built-in sources entirely.
+func TestManifestURLOverride(t *testing.T) {
+	t.Setenv("CODEX_UPDATE_MANIFEST_URL", " https://staging.example.test/version.json ")
+	if got := manifestURLs(); !reflect.DeepEqual(got, []string{"https://staging.example.test/version.json"}) {
+		t.Errorf("manifestURLs() = %q", got)
+	}
+}
 
 func TestParseVersionNums(t *testing.T) {
 	cases := []struct {
