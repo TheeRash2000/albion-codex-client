@@ -1,6 +1,9 @@
 package client
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // mailListResponse is a GetMailInfos response in the layout the game sent on
 // 2026-11-10 (captured from a live session, trimmed to three mails): city at 7,
@@ -139,5 +142,71 @@ func TestCapturedBuyMailIsAPurchaseAtThePaidPrice(t *testing.T) {
 	}
 	if p.Amount != 5 || p.ItemID != "T4_OFF_ORB_MORGANA" || p.UnitPrice != 4773 || p.City != "4002" {
 		t.Errorf("purchase = %+v, want 5x T4_OFF_ORB_MORGANA at 4773 in 4002", p)
+	}
+}
+
+// A sell order can fill above its listed price (it matches a higher buy order).
+// The mail carries both: the total actually realized and the listed price. The
+// ledger must record what was realized. Captured 2026-11-10: 2 listed at 500
+// each, filled by a 540 buy order, total 1,080.
+func TestDecodeSaleUsesRealizedTotalNotListedPrice(t *testing.T) {
+	info := &MailInfo{ID: 1637845419, LocationID: "4002", OrderType: "MARKETPLACE_SELLORDER_FINISHED_SUMMARY"}
+
+	s, ok := decodeSale(1637845419, []string{"2", "T4_OFF_ORB_MORGANA", "10800000", "5000000", "0"}, info, "3008")
+	if !ok {
+		t.Fatal("a well-formed sell mail should decode")
+	}
+	if s.UnitPrice != 540 {
+		t.Errorf("unit price = %d, want 540 (1,080 realized / 2), not the 500 listed", s.UnitPrice)
+	}
+	if s.Amount != 2 || s.ItemID != "T4_OFF_ORB_MORGANA" || s.City != "4002" || s.MailID != 1637845419 {
+		t.Errorf("sale = %+v", s)
+	}
+
+	// Filled exactly at the listed price: the two agree.
+	if s, ok := decodeSale(1, []string{"3", "T4_BAG", "1500000", "500000", "0"}, info, ""); !ok || s.UnitPrice != 50 {
+		t.Errorf("at listed price: %+v ok=%v, want 50", s, ok)
+	}
+
+	// No usable total: fall back to the listed price rather than drop the sale.
+	if s, ok := decodeSale(1, []string{"3", "T4_BAG", "", "500000", "0"}, info, ""); !ok || s.UnitPrice != 50 {
+		t.Errorf("missing total: %+v ok=%v, want the listed 50", s, ok)
+	}
+
+	// The mailbox list was not seen: the sale still gets the player's location.
+	if s, ok := decodeSale(1, []string{"1", "T4_BAG", "500000", "500000", "0"}, nil, "3008"); !ok || s.City != "3008" {
+		t.Errorf("no mail info: %+v ok=%v, want city 3008", s, ok)
+	}
+
+	for _, bad := range [][]string{{"x", "T4_BAG", "1", "1"}, {"0", "T4_BAG", "1", "1"}, {"2", "", "1", "1"}, {"2", "T4_BAG"}} {
+		if s, ok := decodeSale(1, bad, info, ""); ok {
+			t.Errorf("malformed body %v decoded to %+v", bad, s)
+		}
+	}
+}
+
+// After a sale or purchase is recorded, the panel's totals must not sit on an
+// hour-old copy: the cached stats are marked stale so the next read refetches.
+func TestRecordedTradeMakesCachedStatsStale(t *testing.T) {
+	statsMu.Lock()
+	prevCache, prevAt := statsCache, statsFetchedAt
+	statsCache, statsFetchedAt = &ClientStats{}, time.Now()
+	statsMu.Unlock()
+	defer func() {
+		statsMu.Lock()
+		statsCache, statsFetchedAt = prevCache, prevAt
+		statsMu.Unlock()
+	}()
+
+	if !clientStatsFresh() {
+		t.Fatal("stats fetched just now should be fresh")
+	}
+	markClientStatsStale()
+	if clientStatsFresh() {
+		t.Error("stats still fresh after a trade was recorded")
+	}
+	// The old numbers stay on screen until the new ones arrive.
+	if CachedClientStats() == nil {
+		t.Error("marking stale must not blank the panel")
 	}
 }

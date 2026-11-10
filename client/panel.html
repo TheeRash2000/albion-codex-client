@@ -703,7 +703,9 @@ async function refresh() {
 refresh();
 refreshAccount();
 setInterval(refresh, 2000);
-setInterval(refreshAccount, 5 * 60 * 1000);
+// A local read of the host cache; the host only goes to Codex when its copy is
+// stale (hourly, or just after a sale or purchase was recorded).
+setInterval(refreshAccount, 30 * 1000);
 </script>
 </body>
 </html>

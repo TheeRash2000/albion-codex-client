@@ -35,15 +35,12 @@ func (op operationReadMail) Process(state *albionState) {
 		notification = decodeSellNotification(op, body, state, mailInfo)
 
 		// Codex: contribute the realized sale (what actually sold + at what price).
-		if sell, ok := notification.(*lib.MarketSellNotification); ok && sell != nil {
+		// Decoded on its own: the legacy notification above carries the LISTED
+		// price, which is not what the player received when the order filled
+		// above it.
+		if sale, ok := decodeSale(op.ID, body, mailInfo, state.LocationId); ok {
 			srv, _ := state.GetServer()
-			uploadSaleToCodex(codexSale{
-				MailID:    sell.MailID,
-				ItemID:    sell.ItemID,
-				City:      sell.LocationID,
-				Amount:    sell.Amount,
-				UnitPrice: sell.Price,
-			}, codexServerName(srv))
+			uploadSaleToCodex(sale, codexServerName(srv))
 		}
 	case mailPurchase:
 		// A finished BUY order = a realized purchase (the ledger's cost basis).
@@ -77,6 +74,46 @@ func (op operationReadMail) Process(state *albionState) {
 
 	identifier, _ := uuid.NewV4()
 	sendMsgToPrivateUploaders(&upload, lib.NatsMarketNotifications, state, identifier.String())
+}
+
+// decodeSale reads a finished SELL-order mail body ("amount|item|total|listedPrice|0")
+// into a codexSale. The unit price is what was realized, total/amount, NOT body[3]
+// (the price the order was listed at): a sell order that matches a higher buy
+// order fills above its listing. Seen live 2026-11-10: 2 listed at 500, filled by
+// a 540 buy order, total 1,080. The total is before market tax, as the ledger
+// expects. Without a usable total it falls back to the listed price rather than
+// drop the sale. City comes from the mailbox list, else the player's location.
+// Mirrors decodeBuyPurchase.
+func decodeSale(mailID int, body []string, mailInfo *MailInfo, playerLocation string) (codexSale, bool) {
+	if len(body) < 4 {
+		return codexSale{}, false
+	}
+	amount, err := strconv.Atoi(strings.TrimSpace(body[0]))
+	if err != nil || amount <= 0 {
+		return codexSale{}, false
+	}
+	item := strings.TrimSpace(body[1])
+	if item == "" {
+		return codexSale{}, false
+	}
+	// Silver on the wire is x10000.
+	unit := 0
+	if total, err := strconv.Atoi(strings.TrimSpace(body[2])); err == nil && total > 0 {
+		unit = (total / amount) / 10000
+	}
+	if unit <= 0 {
+		if listed, err := strconv.Atoi(strings.TrimSpace(body[3])); err == nil {
+			unit = listed / 10000
+		}
+	}
+	if unit <= 0 {
+		return codexSale{}, false
+	}
+	city := playerLocation
+	if mailInfo != nil && mailInfo.LocationID != "" {
+		city = mailInfo.LocationID
+	}
+	return codexSale{MailID: mailID, ItemID: item, City: city, Amount: amount, UnitPrice: unit}, true
 }
 
 // mailKind is what a read mail turned out to be.

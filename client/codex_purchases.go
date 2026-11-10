@@ -50,6 +50,7 @@ func uploadPurchaseToCodex(p codexPurchase, server string) {
 	enqueueCodexUpload("Purchases", "/api/client/purchases", body, 1, false, func() {
 		log.Infof("Codex: recorded a purchase (%dx %s @ %d).", p.Amount, p.ItemID, p.UnitPrice)
 		Status.addActivity("Recorded your purchase: " + strconv.Itoa(p.Amount) + "x " + humanizeItemID(p.ItemID) + " at " + formatSilver(p.UnitPrice) + " each")
+		refreshClientStatsAfterTrade()
 	})
 }
 

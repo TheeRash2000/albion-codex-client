@@ -81,6 +81,9 @@ var (
 	statsCache     *ClientStats
 	statsFetchedAt time.Time
 	statsInFlight  bool
+	// statsStaleGen counts markClientStatsStale calls, so a fetch that was already
+	// in flight when a trade was recorded does not stamp its older answer as fresh.
+	statsStaleGen int
 )
 
 // CachedClientStats returns the last successfully fetched stats, or nil if none
@@ -90,6 +93,32 @@ func CachedClientStats() *ClientStats {
 	statsMu.RLock()
 	defer statsMu.RUnlock()
 	return statsCache
+}
+
+// clientStatsFresh reports whether the cached stats are recent enough to serve
+// without a refetch.
+func clientStatsFresh() bool {
+	statsMu.RLock()
+	defer statsMu.RUnlock()
+	return statsCache != nil && time.Since(statsFetchedAt) < statsMaxAge
+}
+
+// markClientStatsStale makes the next read refetch. Called when this client has
+// just changed what the site would report (a sale or purchase was recorded), so
+// the ledger card does not sit on totals up to an hour old. The cached numbers
+// stay on screen until the new ones arrive.
+func markClientStatsStale() {
+	statsMu.Lock()
+	statsFetchedAt = time.Time{}
+	statsStaleGen++
+	statsMu.Unlock()
+}
+
+// refreshClientStatsAfterTrade marks the stats stale and starts the refetch now,
+// so the panel's next poll already has the new totals.
+func refreshClientStatsAfterTrade() {
+	markClientStatsStale()
+	RefreshClientStatsIfStale()
 }
 
 // RefreshClientStatsIfStale kicks off a background fetch when the cache is older
@@ -110,6 +139,7 @@ func RefreshClientStatsIfStale() {
 		return
 	}
 	statsInFlight = true
+	gen := statsStaleGen
 	statsMu.Unlock()
 
 	go func() {
@@ -119,7 +149,11 @@ func RefreshClientStatsIfStale() {
 		statsInFlight = false
 		if err == nil && s != nil {
 			statsCache = s
-			statsFetchedAt = time.Now()
+			// If a trade was recorded while this was in flight, the answer may
+			// predate it: show it, but leave it stale so the next read refetches.
+			if statsStaleGen == gen {
+				statsFetchedAt = time.Now()
+			}
 		}
 		statsMu.Unlock()
 
