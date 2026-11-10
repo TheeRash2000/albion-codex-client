@@ -1,0 +1,155 @@
+name: Upstream watch
+
+# This client is a fork of ao-data/albiondata-client. Once a day this checks
+# whether upstream has moved past the commit recorded in .github/upstream-synced.
+#
+# - Upstream moved: an issue is opened listing the new commits and the files they
+#   touch, so nothing is missed.
+# - The game code tables differ from upstream's (they change with every game
+#   patch): a pull request is opened that copies them across, after running the
+#   tests with them in place.
+#
+# Anything else upstream changed has to be ported by hand; when that is done,
+# update .github/upstream-synced to the upstream commit that was ported up to.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM: ao-data/albiondata-client
+  TABLES: client/events.go client/operations.go client/eventtype_string.go client/operationtype_string.go
+
+jobs:
+  check:
+    name: Has upstream moved?
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      moved: ${{ steps.cmp.outputs.moved }}
+      head: ${{ steps.cmp.outputs.head }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compare with upstream
+        id: cmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          synced=$(tr -d '[:space:]' < .github/upstream-synced)
+          head=$(gh api "repos/$UPSTREAM/commits/master" --jq .sha)
+          echo "synced=$synced" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          if [ "$synced" = "$head" ]; then
+            echo "moved=false" >> "$GITHUB_OUTPUT"
+            echo "Up to date with $UPSTREAM at ${head:0:7}."
+          else
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+            echo "$UPSTREAM moved: ${synced:0:7} -> ${head:0:7}"
+          fi
+
+      - name: Open an issue for the new upstream commits
+        if: steps.cmp.outputs.moved == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNCED: ${{ steps.cmp.outputs.synced }}
+          HEAD_SHA: ${{ steps.cmp.outputs.head }}
+        run: |
+          set -euo pipefail
+          title="Upstream moved to ${HEAD_SHA:0:7}"
+          gh label create upstream --color 1d76db --description "Changes to port from $UPSTREAM" --force
+          if [ -n "$(gh issue list --state open --label upstream --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            echo "An open issue already covers ${HEAD_SHA:0:7}."
+            exit 0
+          fi
+          gh api "repos/$UPSTREAM/compare/$SYNCED...$HEAD_SHA" > compare.json
+          {
+            echo "[$UPSTREAM](https://github.com/$UPSTREAM) has new commits since the last port (\`${SYNCED:0:7}\`)."
+            echo
+            echo "### Commits"
+            jq -r '.commits[] | select((.parents | length) < 2) | "- [`\(.sha[0:7])`](\(.html_url)) \(.commit.message | split("\n")[0])"' compare.json
+            echo
+            echo "### Files changed"
+            jq -r '.files[] | "- `\(.filename)`"' compare.json
+            echo
+            echo "The game code tables are copied across by an automatic pull request. Everything else needs porting by hand. When done, set \`.github/upstream-synced\` to \`$HEAD_SHA\` and close this issue."
+          } > body.md
+          gh issue create --title "$title" --label upstream --body-file body.md
+
+  tables:
+    name: Copy the game code tables
+    needs: check
+    if: needs.check.outputs.moved == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      CGO_ENABLED: '0'
+      HEAD_SHA: ${{ needs.check.outputs.head }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.UPSTREAM }}
+          ref: ${{ needs.check.outputs.head }}
+          path: .upstream
+
+      - name: Copy the tables
+        id: copy
+        run: |
+          set -euo pipefail
+          for f in $TABLES; do cp ".upstream/$f" "$f"; done
+          rm -rf .upstream
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Code tables already match upstream."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat
+          fi
+
+      - uses: actions/setup-go@v6
+        if: steps.copy.outputs.changed == 'true'
+        with:
+          go-version: '1.26'
+
+      - name: Test with the new tables
+        if: steps.copy.outputs.changed == 'true'
+        run: go build ./... && go test ./...
+
+      - name: Open a pull request
+        if: steps.copy.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="upstream/code-tables-${HEAD_SHA:0:7}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch already exists; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add $TABLES
+          git commit -m "Update operation and event codes from upstream ${HEAD_SHA:0:7}
+
+          Copied from $UPSTREAM at $HEAD_SHA."
+          git push origin "$branch"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+            --title "Update operation and event codes from upstream ${HEAD_SHA:0:7}" \
+            --body "Copies the game code tables from [$UPSTREAM](https://github.com/$UPSTREAM/commit/$HEAD_SHA). Build and tests passed with them in place before this was opened.
+
+          Other upstream changes, if any, are listed in the open \`upstream\` issue and are not part of this pull request."

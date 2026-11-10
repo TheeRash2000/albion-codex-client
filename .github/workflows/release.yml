@@ -1,0 +1,61 @@
+name: Release
+
+# Pushing a version tag (for example alpha-0.1.19) builds the Windows client from
+# that commit and prepares a DRAFT release with the exe, the installer,
+# version.json and checksums. Nothing reaches users until the draft is published
+# by hand: clients look for version.json on the latest published release.
+
+on:
+  push:
+    tags:
+      - 'alpha-[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build and draft release
+    runs-on: windows-latest
+    env:
+      CGO_ENABLED: '0'
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build exe, installer and version.json
+        shell: pwsh
+        run: |
+          $url = "https://github.com/${{ github.repository }}/releases/download/$env:TAG/codex-client.exe"
+          ./scripts/build-codex.ps1 -Version $env:TAG -NoCgo -DownloadUrl $url
+
+      - name: Verify and write checksums
+        shell: pwsh
+        run: |
+          foreach ($f in 'codex-client.exe', 'codex-client-setup.exe', 'version.json') {
+            if (-not (Test-Path $f)) { throw "missing $f" }
+          }
+          $manifest = Get-Content version.json -Raw | ConvertFrom-Json
+          $sha = (Get-FileHash codex-client.exe -Algorithm SHA256).Hash.ToLower()
+          if ($manifest.version -ne $env:TAG) { throw "version.json says $($manifest.version), tag is $env:TAG" }
+          if ($manifest.sha256 -ne $sha) { throw "version.json checksum does not match codex-client.exe" }
+          $lines = foreach ($f in 'codex-client.exe', 'codex-client-setup.exe') {
+            "$((Get-FileHash $f -Algorithm SHA256).Hash.ToLower())  $f"
+          }
+          [System.IO.File]::WriteAllText("$PWD\SHA256SUMS.txt", ($lines -join "`n") + "`n")
+          Get-Content SHA256SUMS.txt
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:TAG codex-client-setup.exe codex-client.exe version.json SHA256SUMS.txt `
+            --repo "${{ github.repository }}" --draft --verify-tag --title "Codex Client $env:TAG" --generate-notes

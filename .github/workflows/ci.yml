@@ -1,0 +1,38 @@
+name: CI
+
+# Tests and a full Windows build (exe + installer) on every push and pull request.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Test and build (Windows)
+    runs-on: windows-latest
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build exe and installer
+        shell: pwsh
+        run: ./scripts/build-codex.ps1 -Version 0.0.0 -NoCgo
+
+      - name: Check the build produced everything
+        shell: pwsh
+        run: |
+          foreach ($f in 'codex-client.exe', 'codex-client-setup.exe', 'version.json') {
+            if (-not (Test-Path $f)) { throw "missing $f" }
+          }
