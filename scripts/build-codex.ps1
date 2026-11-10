@@ -109,3 +109,18 @@ $manifest = [ordered]@{
 $json = $manifest | ConvertTo-Json
 [System.IO.File]::WriteAllText("$repo\version.json", $json, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "Wrote version.json (version $Version, sha256 $sha)" -ForegroundColor Green
+
+# Installer (pkg/nsis/codex-client.nsi): built only when NSIS is installed and the
+# version is numeric, so a plain dev build needs nothing extra.
+$makensis = (Get-Command makensis -ErrorAction SilentlyContinue).Source
+if (-not $makensis) {
+  $makensis = @("${env:ProgramFiles(x86)}\NSIS\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe") |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+if ($makensis -and $numericVersion -match '^\d+\.\d+\.\d+$') {
+  & $makensis "/DPACKAGE_VERSION=$numericVersion" "/DTOP_SRCDIR=$repo" "/DOUTFILE=$repo\codex-client-setup.exe" "$repo\pkg\nsis\codex-client.nsi"
+  if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+  Write-Host "Built codex-client-setup.exe" -ForegroundColor Green
+} else {
+  Write-Host "Skipped the installer (needs NSIS on this machine and a numeric -Version such as 0.1.19)."
+}
