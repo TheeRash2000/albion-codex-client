@@ -33,11 +33,27 @@ jobs:
       - name: Install NSIS (builds the installer)
         run: choco install nsis -y --no-progress
 
+      # The "what's new" line the client shows once after updating comes from the
+      # tag's own message:  git tag -a alpha-0.1.20 -m "One line for players"
+      # A plain (lightweight) tag has no message, so the note is empty and the
+      # client shows nothing. checkout leaves an annotated tag as a plain ref, so
+      # fetch the tag object itself before reading it.
+      - name: Read the release note from the tag
+        shell: pwsh
+        run: |
+          git fetch --quiet --force origin "+refs/tags/${env:TAG}:refs/tags/${env:TAG}"
+          $note = ''
+          if ((git cat-file -t "refs/tags/$env:TAG") -eq 'tag') {
+            $note = (git tag -l --format='%(contents:subject)' $env:TAG | Out-String).Trim()
+          }
+          Write-Host "Release note: '$note'"
+          "RELEASE_NOTE=$note" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build exe, installer and version.json
         shell: pwsh
         run: |
           $url = "https://github.com/${{ github.repository }}/releases/download/$env:TAG/codex-client.exe"
-          ./scripts/build-codex.ps1 -Version $env:TAG -NoCgo -DownloadUrl $url
+          ./scripts/build-codex.ps1 -Version $env:TAG -NoCgo -DownloadUrl $url -Notes "$env:RELEASE_NOTE"
 
       - name: Verify and write checksums
         shell: pwsh

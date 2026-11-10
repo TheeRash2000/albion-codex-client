@@ -180,7 +180,7 @@ func (q *codexUploadQueue) send(client *http.Client, token string, j *codexUploa
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
+	req.Header.Set("User-Agent", codexUserAgent())
 
 	resp, err := client.Do(req)
 	if err != nil {

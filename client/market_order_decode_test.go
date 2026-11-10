@@ -51,3 +51,57 @@ func TestAuctionResponsesSurviveMalformedOrders(t *testing.T) {
 	operationAuctionGetOffersResponse{MarketOrders: []string{`{"Id":`}}.Process(state)
 	operationAuctionGetRequestsResponse{MarketOrders: []string{`{"Id":`}}.Process(state)
 }
+
+// The game answers buy-order requests with the sell-offer response, so one batch
+// can hold either side or both. The feed must say what was actually read; it
+// used to call every batch "sell orders".
+func TestOrdersReadLabel(t *testing.T) {
+	cases := []struct {
+		sell, buy int
+		want      string
+	}{
+		{38, 12, "38 sell orders and 12 buy orders"},
+		{50, 0, "50 sell orders"},
+		{0, 12, "12 buy orders"},
+		{1, 0, "1 sell order"},
+		{0, 1, "1 buy order"},
+		{1, 1, "1 sell order and 1 buy order"},
+		{0, 0, "0 orders"},
+	}
+	for _, c := range cases {
+		if got := ordersReadLabel(c.sell, c.buy); got != c.want {
+			t.Errorf("ordersReadLabel(%d, %d) = %q, want %q", c.sell, c.buy, got, c.want)
+		}
+	}
+}
+
+func TestOrderSidesCountsByEachOrdersOwnType(t *testing.T) {
+	// A buy-order request answered through the offers path: decoded by the offers
+	// decoder, still counted as a buy order.
+	orders := decodeOfferOrders([]string{goodOffer, goodRequest, denOffer, goodRequest}, "3008")
+	sell, buy := orderSides(orders)
+	if sell != 2 || buy != 2 {
+		t.Errorf("sell=%d buy=%d, want 2 and 2", sell, buy)
+	}
+	if sell, buy := orderSides(nil); sell != 0 || buy != 0 {
+		t.Errorf("empty batch: sell=%d buy=%d", sell, buy)
+	}
+}
+
+// A finished auction is a completed trade waiting for pickup, not a live price.
+// "Finished auctions" arrives through the same response as live offers, so it
+// must never be uploaded as one.
+func TestDecodeOfferOrdersDropsFinishedAuctions(t *testing.T) {
+	finished := `{"Id":9,"ItemTypeId":"T6_BAG","QualityLevel":1,"UnitPriceSilver":900000,"Amount":1,"AuctionType":"offer","IsFinished":true}`
+	live := `{"Id":10,"ItemTypeId":"T6_BAG","QualityLevel":1,"UnitPriceSilver":950000,"Amount":1,"AuctionType":"offer","IsFinished":false}`
+
+	orders := decodeOfferOrders([]string{finished, live, goodOffer}, "3008")
+	if len(orders) != 2 {
+		t.Fatalf("got %d orders, want 2 (the finished one dropped)", len(orders))
+	}
+	for _, o := range orders {
+		if o.ID == 9 {
+			t.Error("the finished auction was kept")
+		}
+	}
+}

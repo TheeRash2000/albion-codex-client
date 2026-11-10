@@ -50,7 +50,12 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 		return
 	}
 
-	Status.addActivity("Read " + strconv.Itoa(len(orders)) + " market sell orders")
+	// This response also answers buy-order requests and "my open orders" (the
+	// game sends them all as op 81; seen live 2026-11-10), so say which sides
+	// were actually read. Each order carries its own AuctionType, and the Codex
+	// upload below already sorts on it.
+	read := ordersReadLabel(orderSides(orders))
+	Status.addActivity("Read " + read)
 
 	upload := lib.MarketUpload{
 		Orders: orders,
@@ -61,8 +66,46 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 	uploadMarketToCodex(orders, codexServerName(srv))
 
 	identifier, _ := uuid.NewV4()
-	log.Infof("Sending %d live market sell orders to ingest (Identifier: %s)", len(orders), identifier)
+	log.Infof("Sending %s to ingest (Identifier: %s)", read, identifier)
 	sendMsgToPublicUploaders(upload, lib.NatsMarketOrdersIngest, state, identifier.String())
+}
+
+// orderSides counts a batch by each order's own type: "offer" is a sell order,
+// anything else (the game sends "request") is a buy order. The same rule the
+// Codex upload uses (codex_market.go).
+func orderSides(orders []*lib.MarketOrder) (sell, buy int) {
+	for _, o := range orders {
+		if o == nil {
+			continue
+		}
+		if strings.EqualFold(o.AuctionType, "offer") {
+			sell++
+		} else {
+			buy++
+		}
+	}
+	return sell, buy
+}
+
+// ordersReadLabel words those counts for the feed and the log: "38 sell orders
+// and 12 buy orders", or just the side that was read.
+func ordersReadLabel(sell, buy int) string {
+	side := func(n int, kind string) string {
+		if n == 1 {
+			return "1 " + kind + " order"
+		}
+		return strconv.Itoa(n) + " " + kind + " orders"
+	}
+	switch {
+	case sell > 0 && buy > 0:
+		return side(sell, "sell") + " and " + side(buy, "buy")
+	case sell > 0:
+		return side(sell, "sell")
+	case buy > 0:
+		return side(buy, "buy")
+	default:
+		return "0 orders"
+	}
 }
 
 // decodeOfferOrders turns the raw sell-offer strings into orders. City orders
@@ -76,6 +119,7 @@ func (op operationAuctionGetOffersResponse) Process(state *albionState) {
 func decodeOfferOrders(raw []string, playerLocation string) []*lib.MarketOrder {
 	var orders []*lib.MarketOrder
 	skipped := 0
+	finished := 0
 
 	for _, v := range raw {
 		// Unmarshal market order data to map
@@ -83,6 +127,14 @@ func decodeOfferOrders(raw []string, playerLocation string) []*lib.MarketOrder {
 		err2 := json.Unmarshal([]byte(v), &marketOrder)
 		if err2 != nil {
 			skipped++
+			continue
+		}
+
+		// "Finished auctions" (completed trades waiting for pickup) arrive through
+		// this same response. A finished auction is not a live price, so it is
+		// never uploaded as one. Live orders carry IsFinished=false.
+		if done, _ := marketOrder["IsFinished"].(bool); done {
+			finished++
 			continue
 		}
 
@@ -119,7 +171,10 @@ func decodeOfferOrders(raw []string, playerLocation string) []*lib.MarketOrder {
 	}
 
 	if skipped > 0 {
-		log.Errorf("Skipped %d market sell orders that were not valid JSON.", skipped)
+		log.Errorf("Skipped %d market orders that were not valid JSON.", skipped)
+	}
+	if finished > 0 {
+		log.Debugf("Left out %d finished auctions (not live prices).", finished)
 	}
 	return orders
 }

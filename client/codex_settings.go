@@ -55,6 +55,10 @@ type codexSettings struct {
 	// reasoning as AODPUpload: nil means unconfigured (take the flag default),
 	// an explicit false is honoured across restarts.
 	MarketUpload *bool `json:"market_upload,omitempty"`
+
+	// The release note saved by a self-update, to show once on the next start
+	// (update_note.go). Absent except between an update and that start.
+	PendingUpdateNote *pendingUpdateNote `json:"pending_update_note,omitempty"`
 }
 
 // aodpUploadOrDefault resolves the tri-state: an explicit choice wins, absence

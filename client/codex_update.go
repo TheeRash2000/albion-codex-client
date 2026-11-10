@@ -138,6 +138,7 @@ func checkForUpdate(currentVersion string) {
 
 	log.Infof("Codex updater: updated to %s; restarting.", m.Version)
 	Status.addActivity("Updated to " + m.Version + "; restarting")
+	savePendingUpdateNote(m.Version, m.Notes)
 	restartAfterUpdate()
 }
 
@@ -177,7 +178,7 @@ func fetchManifestFrom(url string) (*updateManifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", codexClientVersion)
+	req.Header.Set("User-Agent", codexUserAgent())
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
@@ -206,7 +207,7 @@ func downloadBinary(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", codexClientVersion)
+	req.Header.Set("User-Agent", codexUserAgent())
 	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
 	if err != nil {
 		return nil, err

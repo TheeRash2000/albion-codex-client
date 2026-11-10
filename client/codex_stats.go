@@ -154,7 +154,7 @@ func fetchClientStats() (*ClientStats, error) {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
+	req.Header.Set("User-Agent", codexUserAgent())
 
 	client := &http.Client{Timeout: statsTimeout}
 	resp, err := client.Do(req)

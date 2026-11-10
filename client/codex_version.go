@@ -92,7 +92,7 @@ func reportVersionToCodex(version string) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", codexClientVersion)
+	req.Header.Set("User-Agent", codexUserAgent())
 
 	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {

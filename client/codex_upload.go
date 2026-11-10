@@ -11,9 +11,6 @@ import (
 	"github.com/ao-data/albiondata-client/log"
 )
 
-// codexClientVersion identifies this client to the Codex ingest API.
-const codexClientVersion = "codex-client/alpha-0.1.15"
-
 // codexCharacter mirrors the POST body the Codex ingest route expects:
 //
 //	{ "character": { "name": string, "skills": { "<nodeId>": level } } }
