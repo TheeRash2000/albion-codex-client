@@ -21,21 +21,16 @@ func (op operationReadMail) Process(state *albionState) {
 	// split the mail body
 	body := strings.Split(op.Body, "|")
 
-	// MailInfos (order type + city) comes from a SEPARATE GetMailInfos response that
-	// is frequently NOT loaded when ReadMail fires - a cross-packet dependency that
-	// silently dropped every realized sale. The ReadMail body is self-contained
-	// ("amount|itemId|total|unitPrice|0" for a finished sell order), so we read the
-	// sale from the body and only USE MailInfos for the order type/city when present.
+	// The mail's type and city come from the mailbox list (GetMailInfos), which the
+	// game sends when the mailbox opens - before any mail can be read.
 	mailInfo := MailInfos.getMailInfo(op.ID)
 	orderType := ""
 	if mailInfo != nil {
 		orderType = mailInfo.OrderType
 	}
 
-	sellFinished := orderType == "MARKETPLACE_SELLORDER_FINISHED_SUMMARY" ||
-		(orderType == "" && looksLikeSellFinished(body))
-
-	if sellFinished {
+	switch classifyMail(orderType, body) {
+	case mailSale:
 		log.Debug("Read finished sell order.")
 		notification = decodeSellNotification(op, body, state, mailInfo)
 
@@ -50,21 +45,25 @@ func (op operationReadMail) Process(state *albionState) {
 				UnitPrice: sell.Price,
 			}, codexServerName(srv))
 		}
-	} else if orderType == "MARKETPLACE_BUYORDER_FINISHED_SUMMARY" {
-		// A finished BUY order = a realized purchase (the ledger's cost basis). A
-		// finished buy and finished sell mail have the SAME body shape, so this is
-		// gated on the confirmed order type (from GetMailInfos), never the body alone
-		// - otherwise a buy could be misread as a sale. Codex-only: no legacy
-		// market-notification for purchases, so return after uploading.
+	case mailPurchase:
+		// A finished BUY order = a realized purchase (the ledger's cost basis).
+		// Codex-only: no legacy market-notification for purchases, so return after
+		// uploading.
 		log.Debug("Read finished buy order (purchase).")
 		if p, ok := decodeBuyPurchase(op.ID, body, mailInfo); ok {
 			srv, _ := state.GetServer()
 			uploadPurchaseToCodex(p, codexServerName(srv))
 		}
 		return
-	} else if orderType == "MARKETPLACE_SELLORDER_EXPIRED_SUMMARY" {
+	case mailSellExpired:
 		log.Debug("Read expired sell order.")
 		notification = decodeExpiryNotification(op, body)
+	case mailUnknownOrder:
+		// Recording a guess would put a purchase in the sales data (or the reverse)
+		// at the wrong price, so record nothing and say so.
+		log.Infof("Mail %d is a finished market order, but the mailbox list that says whether it was a sale or a purchase was not seen; not recorded. Close and reopen the mailbox, then read it again.", op.ID)
+		Status.addActivity("Could not tell if a market mail was a sale or a purchase - reopen your mailbox and read it again")
+		return
 	}
 
 	if notification == nil {
@@ -80,11 +79,41 @@ func (op operationReadMail) Process(state *albionState) {
 	sendMsgToPrivateUploaders(&upload, lib.NatsMarketNotifications, state, identifier.String())
 }
 
-// looksLikeSellFinished infers a finished-sell-order mail from the body alone
+// mailKind is what a read mail turned out to be.
+type mailKind int
+
+const (
+	mailOther        mailKind = iota // not a market mail we record
+	mailSale                         // finished sell order
+	mailPurchase                     // finished buy order
+	mailSellExpired                  // expired sell order
+	mailUnknownOrder                 // a finished order, but sale or purchase is not known
+)
+
+// classifyMail decides what a mail is from its type (from the mailbox list). A
+// finished buy order and a finished sell order have the SAME body
+// ("amount|itemId|total|unitPrice|0"), so the body can never decide between
+// them: with no type, a finished-order body is mailUnknownOrder, never a sale.
+func classifyMail(orderType string, body []string) mailKind {
+	switch orderType {
+	case "MARKETPLACE_SELLORDER_FINISHED_SUMMARY":
+		return mailSale
+	case "MARKETPLACE_BUYORDER_FINISHED_SUMMARY":
+		return mailPurchase
+	case "MARKETPLACE_SELLORDER_EXPIRED_SUMMARY":
+		return mailSellExpired
+	case "":
+		if looksLikeFinishedOrder(body) {
+			return mailUnknownOrder
+		}
+	}
+	return mailOther
+}
+
+// looksLikeFinishedOrder reports whether a mail body has the finished-order shape
 // ("amount|itemId|total|unitPrice|0"): a numeric amount and unit price with a
-// non-numeric item id in slot 1. Used when the MailInfos cache (order type) is not
-// loaded yet, so a real sale is never dropped.
-func looksLikeSellFinished(body []string) bool {
+// non-numeric item id in slot 1. Both finished sell and finished buy orders match.
+func looksLikeFinishedOrder(body []string) bool {
 	if len(body) < 4 {
 		return false
 	}
