@@ -61,7 +61,10 @@ type ClientStats struct {
 			CopyText string `json:"copyText,omitempty"`
 		} `json:"wanted"`
 	} `json:"bounties"`
-	Cities []struct {
+	// The owner's Codex+ contribution. Nil when the site does not send it (an
+	// older deploy, or its read failed): the panel then shows no numbers.
+	Contribution *ClientContribution `json:"contribution"`
+	Cities       []struct {
 		City       string `json:"city"`
 		Server     string `json:"server"`
 		Rows       int64  `json:"rows"`

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/ao-data/albiondata-client/icon"
 	"github.com/ao-data/albiondata-client/log"
@@ -52,7 +53,7 @@ func StartPanel() {
 	// which the page renders as session-only numbers rather than as an error.
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
 		RefreshClientStatsIfStale()
-		writeJSON(w, CachedClientStats())
+		writeJSON(w, panelStats(CachedClientStats(), time.Now()))
 	})
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, Status.Snapshot())
@@ -110,6 +111,10 @@ func StartPanel() {
 	})
 	mux.HandleFunc("/api/open-codex", func(w http.ResponseWriter, r *http.Request) {
 		OpenBrowser(CodexAccountURL())
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/open-plus", func(w http.ResponseWriter, r *http.Request) {
+		OpenBrowser(CodexPlusURL())
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/api/open-npcap", func(w http.ResponseWriter, r *http.Request) {

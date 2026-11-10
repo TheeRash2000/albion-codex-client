@@ -115,11 +115,18 @@ body{
 .fi.warn .m{color:var(--lx-gold)}
 .empty{padding:11px 13px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic}
 
-/* ---- codex+ teaser ---- */
-.plus{display:flex;align-items:center;gap:10px;padding:11px 13px;opacity:.55}
-.plus .t{font-family:var(--cin);font-size:12px;color:var(--lx-text);flex:1}
+/* ---- codex+ row: contribution towards earning Codex+ ---- */
+.plus{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer}
+.plus:hover .t{color:var(--lx-gold-bright)}
+.plus .body{flex:1;min-width:0}
+.plus .t{font-family:var(--cin);font-size:12px;color:var(--lx-text)}
+.plus .d{font-size:12px;color:var(--lx-parch-dim);margin-top:3px;line-height:1.4}
+.plus .u{font-size:11px;color:var(--lx-muted);font-style:italic;margin-top:2px}
+.pbar{height:3px;border-radius:2px;background:var(--lx-rule);margin-top:7px;overflow:hidden}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--lx-gold-deep),var(--lx-gold))}
 .chip{font-family:var(--cin);font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--lx-muted);
-  border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px}
+  border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px;flex:none}
+.plus.held .chip{color:var(--lx-gold-bright);border-color:var(--lx-gold-deep)}
 
 /* ---- bounties ---- */
 .bnote{padding:10px 13px 4px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic;line-height:1.45}
@@ -240,9 +247,16 @@ body{
   </div>
 
   <div class="card">
-    <div class="plus">
-      <span class="t">Codex+</span>
-      <span class="chip">Coming soon</span>
+    <!-- Filled in by renderPlus from /api/stats. This markup is the fallback an
+         unpaired or offline client keeps showing. -->
+    <div class="plus" id="plus" title="Open the Codex+ page">
+      <div class="body">
+        <div class="t" id="plusTitle">Codex+</div>
+        <div class="d" id="plusDetail">Earn it free by contributing with this client</div>
+        <div class="u hidden" id="plusUpdated"></div>
+        <div class="pbar hidden" id="plusBar"><i id="plusFill"></i></div>
+      </div>
+      <span class="chip" id="plusChip">Learn more</span>
     </div>
   </div>
 
@@ -447,10 +461,30 @@ function render(s) {
    so it is polled slowly and the host only refetches when its cache is over an
    hour old. Renders nothing at all until data arrives, so an offline or
    unpaired client simply shows the session numbers rather than an error. */
+/* The Codex+ row. The host works out the wording (codex_plus_row.go); this only
+   places it. With nothing from the host the markup's own fallback stays. */
+const PLUS_FALLBACK = { title: 'Codex+', detail: 'Earn it free by contributing with this client', chip: 'Learn more', percent: -1, held: false, updated: '' };
+function renderPlus(p) {
+  p = p && p.title ? p : PLUS_FALLBACK;
+  $('plus').classList.toggle('held', !!p.held);
+  $('plusTitle').textContent = p.title;
+  $('plusDetail').textContent = p.detail || '';
+  $('plusChip').textContent = p.chip || '';
+  const upd = $('plusUpdated');
+  upd.textContent = p.updated || '';
+  upd.classList.toggle('hidden', !p.updated);
+  const hasBar = typeof p.percent === 'number' && p.percent >= 0;
+  $('plusBar').classList.toggle('hidden', !hasBar);
+  if (hasBar) $('plusFill').style.width = Math.min(100, p.percent) + '%';
+}
+$('plus').onclick = () => api('/api/open-plus', { method: 'POST' });
+
 function renderAccount(s) {
   const acct = $('account');
   const cov = $('coverage');
   const covCard = $('coverageCard');
+
+  renderPlus(s && s.plus);
 
   if (!s || !s.captures) {
     acct.replaceChildren();
