@@ -106,7 +106,9 @@ Write-Host "Embedded exe resources (icon, version info)" -ForegroundColor Green
 # a file list and silently skips .syso files, which is why earlier builds had no
 # icon even though winres.json existed. The main package is that one file, so
 # the result is otherwise identical.
-& $go build -ldflags "-X main.version=$Version" -o codex-client.exe .
+# -trimpath keeps the build machine's folder names (and so the builder's user
+# name) out of the exe.
+& $go build -trimpath -ldflags "-X main.version=$Version" -o codex-client.exe .
 if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
 $size = [math]::Round((Get-Item "$repo\codex-client.exe").Length / 1MB, 1)
