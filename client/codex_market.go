@@ -49,12 +49,12 @@ func recordMarketActivity(prices []codexPrice) {
 	}
 }
 
-// formatPriceLine renders one uploaded price like "T7.2 Planks Q2 - sell 1,234"
-// or "Adept's Bag - sell 980 / buy 900".
+// formatPriceLine renders one uploaded price like "Rare Ashenbark Planks - sell
+// 1,234" or "Adept's Bag, Good - sell 980 / buy 900".
 func formatPriceLine(p codexPrice) string {
-	label := humanizeItemID(p.ItemID)
-	if p.Quality > 1 {
-		label += " Q" + strconv.Itoa(p.Quality)
+	label := itemLabel(p.ItemID)
+	if q := qualityName(p.Quality); q != "" {
+		label += ", " + q
 	}
 	var parts []string
 	if p.SellMin != nil {

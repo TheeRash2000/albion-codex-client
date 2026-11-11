@@ -137,7 +137,15 @@ upstream commits, and opens a pull request when the game code tables differ.
   two minutes), not only hourly. Most wanted sits under the activity feed and
   shows two groups: items with no price, and items with only an estimated price. The
   account stats are refetched when the realm becomes known or changes, so the list
-  is not missing for the first hour after a start.
+  is not missing for the first hour after a start. A wanted item shows which
+  enchant levels need the scan (5.0, 5.2, or 5.1-5.4 for a run). Activity lines
+  use in-game item names from an embedded table (`client/itemnames.tsv.gz`), and
+  name the quality instead of Q2 to Q5. A price chart line shows the
+  average the game shows for that window (all silver over all items sold). An
+  identical line repeated within ten seconds is not added twice. The item behind
+  a numeric id (price chart, estimated value) is named by the site in its upload
+  reply; the bundled numeric id list, which went stale with every game patch, is
+  gone.
 
 ## Not yet wired
 

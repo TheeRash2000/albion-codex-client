@@ -64,6 +64,9 @@ type ClientStats struct {
 			// True when the item has an estimated price and no real one, rather
 			// than no price at all. Older responses never set it.
 			Estimated bool `json:"estimated,omitempty"`
+			// Which enchant levels need the scan (0 = plain), for an item that
+			// comes in more than one. They share one name in the market search.
+			Enchants []int `json:"enchants,omitempty"`
 		} `json:"wanted"`
 	} `json:"bounties"`
 	// The owner's Codex+ contribution. Nil when the site does not send it (an

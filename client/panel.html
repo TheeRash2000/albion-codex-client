@@ -167,6 +167,8 @@ body{
 .bq{font-family:var(--cin);font-size:11px;color:var(--lx-gold-bright);min-width:56px;text-align:right;flex:none}
 .tier{font-family:var(--cin);font-size:8px;letter-spacing:.05em;color:var(--lx-gold);border:1px solid var(--lx-rule);
   border-radius:3px;padding:1px 5px;margin-right:7px;vertical-align:1px}
+/* Several level chips in a row sit closer together than a chip and the name. */
+.tier + .tier{margin-left:-4px}
 .cpy{font-family:var(--cin);font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--lx-muted);background:none;
   border:1px solid var(--lx-rule);border-radius:3px;padding:2px 7px;cursor:pointer;flex:none}
 .cpy:hover,.cpy:focus-visible{color:var(--lx-gold);border-color:var(--lx-gold);outline:none}
@@ -639,7 +641,17 @@ function bountyRow(w) {
   /* Newer responses carry the in-game name and tier; older ones only the raw
      id, so fall back to the id-based label rather than rendering nothing. */
   if (w.name) {
-    if (w.tier) {
+    /* Enchant levels share one in-game name, so when the site says which levels
+       need the scan, show each as the game writes it: 5.0 plain, 5.2, 5.3. */
+    const levels = levelChips(w);
+    if (levels.length) {
+      levels.forEach((lv) => {
+        const t = document.createElement('span');
+        t.className = 'tier';
+        t.textContent = lv;
+        name.append(t);
+      });
+    } else if (w.tier) {
       const t = document.createElement('span');
       t.className = 'tier';
       t.textContent = 'T' + w.tier;
@@ -659,9 +671,11 @@ function bountyRow(w) {
   unit.textContent = w.estimated
     ? (w.blocks === 1 ? 'price' : 'prices')
     : (w.blocks === 1 ? 'item' : 'items');
-  row.title = w.estimated
+  const lv = wantedLevels(w);
+  row.title = (w.estimated
     ? 'A scan makes ' + nf(w.blocks) + (w.blocks === 1 ? ' price' : ' prices') + ' real instead of estimated'
-    : 'A scan unlocks pricing for ' + nf(w.blocks) + (w.blocks === 1 ? ' item' : ' items');
+    : 'A scan unlocks pricing for ' + nf(w.blocks) + (w.blocks === 1 ? ' item' : ' items'))
+    + (lv.length ? '. Wanted at ' + lv.join(', ') + ' - pick the enchantment in the market filter' : '');
   row.append(name, n, unit);
   if (w.copyText) {
     const c = document.createElement('button');
@@ -674,6 +688,33 @@ function bountyRow(w) {
     row.append(c);
   }
   return row;
+}
+
+/* The enchant levels a wanted item needs scanning at, written as tier.level
+   ("5.0", "5.2"). Empty when the site sent none: an older site, or an item that
+   only comes in one level. */
+function wantedLevels(w) {
+  if (!w || !Array.isArray(w.enchants) || !w.enchants.length) return [];
+  const tier = w.tier ? String(w.tier) : '';
+  /* Anything that is not a clean ascending list of levels is ignored whole, so
+     the range chips below can index the two arrays together. */
+  const ok = w.enchants.every((e, i) => Number.isInteger(e) && e >= 0 && e <= 4 && (i === 0 || e > w.enchants[i - 1]));
+  return ok ? w.enchants.map((e) => tier + '.' + e) : [];
+}
+
+/* The same levels as chips, with a run of three or more written as a range
+   ("5.1-5.4") so a row with every level wanted still fits on one line. */
+function levelChips(w) {
+  const all = wantedLevels(w);
+  const chips = [];
+  for (let i = 0; i < all.length;) {
+    let j = i;
+    while (j + 1 < all.length && w.enchants[j + 1] === w.enchants[j] + 1) j++;
+    if (j - i >= 2) chips.push(all[i] + '-' + all[j]);
+    else for (let k = i; k <= j; k++) chips.push(all[k]);
+    i = j + 1;
+  }
+  return chips;
 }
 
 function bountyGroup(label, note, items) {

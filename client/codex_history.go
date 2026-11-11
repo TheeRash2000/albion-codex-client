@@ -72,8 +72,81 @@ func uploadHistoryToCodex(up lib.MarketHistoriesUpload, server string) {
 	// History is re-fetched by the game and thus re-observable: low-value (shed first).
 	n := len(points)
 	albionID := up.AlbionId
-	enqueueCodexUpload("Market history", "/api/client/market-history", body, n, true, func() {
+	quality, timescale := int(up.QualityLevel), int(up.Timescale)
+	enqueueCodexUploadWithReply("Market history", "/api/client/market-history", body, n, true, func(reply []byte) {
 		log.Infof("Codex: uploaded %d market-history points for item %d.", n, albionID)
-		Status.addActivity("Sent price history (" + strconv.Itoa(n) + " points) to Codex")
+		Status.addActivity(historyLine(historyReplyItem(reply), quality, timescale, points))
 	})
+}
+
+// historyReplyItem reads which item the site says the chart was for.
+//
+// The chart request carries only the game's NUMERIC item id, a position in the
+// game's item list that shifts on every patch. The client used to resolve it
+// with a bundled copy of that list; the copy went stale and the feed named the
+// wrong item (a planks chart shown as a steel bar, 2026-11-11). The site keeps
+// the current list, so it answers, and without an answer the line names no item
+// at all rather than guess.
+func historyReplyItem(reply []byte) string {
+	var r struct {
+		ItemID string `json:"item_id"`
+	}
+	if json.Unmarshal(reply, &r) != nil {
+		return ""
+	}
+	return strings.TrimSpace(r.ItemID)
+}
+
+// historyAverage is the game's "Average Price" for a price chart: all the silver
+// traded in the window divided by all the items traded, NOT the mean of the
+// per-bucket averages (a quiet day would count as much as a busy one). Checked
+// against the game 2026-11-11: 41 buckets, 1,188 items, shown as "753 k", this
+// gives 753,106. Silver on the wire is x10000. ok is false when nothing sold.
+func historyAverage(points []codexHistoryPoint) (avg int, ok bool) {
+	var items, silver uint64
+	for _, p := range points {
+		if p.ItemCount <= 0 {
+			continue
+		}
+		items += uint64(p.ItemCount)
+		silver += p.SilverTotal
+	}
+	if items == 0 {
+		return 0, false
+	}
+	return int((silver + items*5000) / (items * 10000)), true
+}
+
+// historyWindow names the chart window the game sent, the way its own buttons do.
+func historyWindow(timescale int) string {
+	switch timescale {
+	case 0:
+		return "24 hour"
+	case 1:
+		return "7 day"
+	case 2:
+		return "4 week"
+	}
+	return ""
+}
+
+// historyLine is the activity line for an uploaded price chart: which item, and
+// the average price the game itself shows for that window, so the player can
+// check it against their screen. Falls back to the plain count when the item or
+// the window is not known, or nothing sold in it.
+func historyLine(itemID string, quality, timescale int, points []codexHistoryPoint) string {
+	plain := "Sent price history (" + strconv.Itoa(len(points)) + " points) to Codex"
+	window := historyWindow(timescale)
+	if itemID == "" || window == "" {
+		return plain
+	}
+	label := itemLabel(itemID)
+	if q := qualityName(quality); q != "" {
+		label += ", " + q
+	}
+	avg, ok := historyAverage(points)
+	if !ok {
+		return label + " - no sales in the " + window + " chart"
+	}
+	return label + " - " + window + " average " + formatSilver(avg)
 }

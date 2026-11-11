@@ -213,11 +213,23 @@ func capturingMessage(linked bool) string {
 	return "Codex Client is capturing. Click the tray icon to see what is being sent."
 }
 
-// addActivity appends a human-readable event to the live activity feed.
+// activityRepeatWindow is how long an identical line counts as the same event.
+// The game often sends the same market answer twice in a row (opening an item,
+// then picking an action on it), which showed as doubled lines in the feed.
+const activityRepeatWindow = 10 * time.Second
+
+// addActivity appends a human-readable event to the live activity feed. A line
+// identical to the newest one, arriving within activityRepeatWindow, refreshes
+// that line's time rather than adding a second copy.
 func (s *ClientStatus) addActivity(msg string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.activity = append(s.activity, activityEntry{at: time.Now(), msg: msg})
+	now := time.Now()
+	if n := len(s.activity); n > 0 && s.activity[n-1].msg == msg && now.Sub(s.activity[n-1].at) < activityRepeatWindow {
+		s.activity[n-1].at = now
+		return
+	}
+	s.activity = append(s.activity, activityEntry{at: now, msg: msg})
 	if len(s.activity) > maxActivity {
 		s.activity = s.activity[len(s.activity)-maxActivity:]
 	}

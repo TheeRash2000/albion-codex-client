@@ -128,16 +128,29 @@ func uploadEMVToCodex(items, values []int64, server string) {
 
 	// EMV is game-cached and re-sends for uncached items: low-value (shed first).
 	count := len(rows)
-	enqueueCodexUpload("EMV", "/api/client/emv", body, count, true, func() {
+	enqueueCodexUploadWithReply("EMV", "/api/client/emv", body, count, true, func(reply []byte) {
 		log.Infof("Codex: uploaded %d estimated market value(s).", count)
-		recordEMVActivity(rows)
+		recordEMVActivity(rows, emvReplyItems(reply))
 	})
 }
 
+// emvReplyItems reads the site's numeric id -> item id answer for an EMV upload.
+// Nil when the reply carries none (an older site); see historyReplyItem for why
+// the client does not resolve these itself.
+func emvReplyItems(reply []byte) map[string]string {
+	var r struct {
+		Items map[string]string `json:"items"`
+	}
+	if json.Unmarshal(reply, &r) != nil {
+		return nil
+	}
+	return r.Items
+}
+
 // recordEMVActivity logs each captured estimated value to the panel feed as
-// "<item> - est. value <silver>", resolving the numeric item id to a readable
-// name using the authoritative ao-bin-dumps/formatted/items.txt mapping.
-func recordEMVActivity(rows []codexEMVItem) {
+// "<item> - est. value <silver>". The item is the one the site named for the
+// numeric id; without a name the line shows the number, never a guess.
+func recordEMVActivity(rows []codexEMVItem, items map[string]string) {
 	const maxLines = 15
 	shown := len(rows)
 	if shown > maxLines {
@@ -147,9 +160,9 @@ func recordEMVActivity(rows []codexEMVItem) {
 		Status.addActivity("...and " + strconv.Itoa(extra) + " more estimated values to Codex")
 	}
 	for i := 0; i < shown; i++ {
-		label := humanizeItemID(itemNameFromID(int(rows[i].AlbionID)))
-		if label == "" {
-			label = "Item #" + strconv.FormatInt(rows[i].AlbionID, 10)
+		label := "Item #" + strconv.FormatInt(rows[i].AlbionID, 10)
+		if id := strings.TrimSpace(items[strconv.FormatInt(rows[i].AlbionID, 10)]); id != "" {
+			label = itemLabel(id)
 		}
 		Status.addActivity(label + " - est. value " + formatSilver(int(rows[i].Value/10000)))
 	}
