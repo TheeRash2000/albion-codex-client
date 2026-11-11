@@ -3,6 +3,8 @@ _vendor-[0-9]*
 .vscode/
 *.exe
 *.gz
+# The embedded item name table is source, not a build output.
+!client/itemnames.tsv.gz
 *.zip
 *.pcap
 *.gob

@@ -147,7 +147,7 @@ func recordEMVActivity(rows []codexEMVItem) {
 		Status.addActivity("...and " + strconv.Itoa(extra) + " more estimated values to Codex")
 	}
 	for i := 0; i < shown; i++ {
-		label := humanizeItemID(itemNameFromID(int(rows[i].AlbionID)))
+		label := itemLabel(itemNameFromID(int(rows[i].AlbionID)))
 		if label == "" {
 			label = "Item #" + strconv.FormatInt(rows[i].AlbionID, 10)
 		}

@@ -45,7 +45,7 @@ func uploadSaleToCodex(s codexSale, server string) {
 	// the mail is read), so it is high-value: never shed from a full queue.
 	enqueueCodexUpload("Sales", "/api/client/sales", body, 1, false, func() {
 		log.Infof("Codex: recorded a sale (%dx %s @ %d).", s.Amount, s.ItemID, s.UnitPrice)
-		Status.addActivity("Recorded your sale: " + strconv.Itoa(s.Amount) + "x " + humanizeItemID(s.ItemID) + " at " + formatSilver(s.UnitPrice) + " each")
+		Status.addActivity("Recorded your sale: " + strconv.Itoa(s.Amount) + "x " + itemLabel(s.ItemID) + " at " + formatSilver(s.UnitPrice) + " each")
 		refreshClientStatsAfterTrade()
 	})
 }

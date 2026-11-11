@@ -33,15 +33,38 @@ func TestFormatSilver(t *testing.T) {
 	}
 }
 
+// An activity line names the item the way the game does, says the quality only
+// when it is not Normal, and lists whichever sides were captured.
 func TestFormatPriceLine(t *testing.T) {
 	sell := 1234
 	buy := 1180
-	both := formatPriceLine(codexPrice{ItemID: "T7_PLANKS@2", Quality: 2, SellMin: &sell, BuyMax: &buy})
-	if both != "T7.2 Planks Q2 - sell 1,234 / buy 1,180" {
-		t.Errorf("both = %q", both)
+	cases := []struct {
+		name string
+		p    codexPrice
+		want string
+	}{
+		{"both sides, a quality above Normal",
+			codexPrice{ItemID: "T4_BAG", Quality: 3, SellMin: &sell, BuyMax: &buy},
+			"Adept's Bag, Outstanding - sell 1,234 / buy 1,180"},
+		{"Normal quality is left unsaid",
+			codexPrice{ItemID: "T4_BAG", Quality: 1, SellMin: &sell},
+			"Adept's Bag - sell 1,234"},
+		{"enchanted gear shows its level the way the game writes it",
+			codexPrice{ItemID: "T5_2H_ARCANESTAFF_CRYSTAL@2", Quality: 1, BuyMax: &buy},
+			"Expert's Astral Staff (5.2) - buy 1,180"},
+		{"an enchanted resource is named by its level already",
+			codexPrice{ItemID: "T7_PLANKS_LEVEL2@2", Quality: 1, SellMin: &sell},
+			"Rare Ashenbark Planks - sell 1,234"},
+		{"an item the name table does not know keeps the id-based label",
+			codexPrice{ItemID: "T9_SOMETHING_NEW", Quality: 2, SellMin: &sell},
+			"T9 Something New, Good - sell 1,234"},
+		{"no price on either side",
+			codexPrice{ItemID: "T4_BAG", Quality: 1},
+			"Adept's Bag sent to Codex"},
 	}
-	sellOnly := formatPriceLine(codexPrice{ItemID: "T4_BAG", Quality: 1, SellMin: &sell})
-	if sellOnly != "T4 Bag - sell 1,234" {
-		t.Errorf("sellOnly = %q", sellOnly)
+	for _, c := range cases {
+		if got := formatPriceLine(c.p); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }

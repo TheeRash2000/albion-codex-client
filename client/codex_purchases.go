@@ -49,7 +49,7 @@ func uploadPurchaseToCodex(p codexPurchase, server string) {
 	// so it is high-value: never shed from a full queue.
 	enqueueCodexUpload("Purchases", "/api/client/purchases", body, 1, false, func() {
 		log.Infof("Codex: recorded a purchase (%dx %s @ %d).", p.Amount, p.ItemID, p.UnitPrice)
-		Status.addActivity("Recorded your purchase: " + strconv.Itoa(p.Amount) + "x " + humanizeItemID(p.ItemID) + " at " + formatSilver(p.UnitPrice) + " each")
+		Status.addActivity("Recorded your purchase: " + strconv.Itoa(p.Amount) + "x " + itemLabel(p.ItemID) + " at " + formatSilver(p.UnitPrice) + " each")
 		refreshClientStatsAfterTrade()
 	})
 }
