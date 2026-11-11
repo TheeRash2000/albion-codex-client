@@ -61,7 +61,7 @@ body{
 
 /* ---- columns ----
    The panel grows sideways, not downwards. Three groups: (a) status and what is
-   captured, (b) the account view, (c) the feeds. One column when narrow, two
+   captured, (b) the account view, (c) the activity feed. One column when narrow, two
    with the feeds spread underneath at medium width, three side by side when
    wide. A new card goes in the group with room, not on the end of a stack. */
 .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 11px;align-items:start}
@@ -74,6 +74,9 @@ body{
 @media (min-width:1100px){
   .cols{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"a b c"}
   .col.c{display:block}
+  /* Side by side, the activity feed has the column to itself: let it run the
+     height of the window instead of a short fixed box. */
+  #activity{max-height:calc(100vh - 185px)}
 }
 
 .card{background:linear-gradient(180deg,var(--lx-card-from),var(--lx-card-to));
@@ -287,6 +290,11 @@ body{
     </div>
   </div>
 
+  <div class="card hidden" id="coverageCard">
+    <div class="chead"><span class="eyebrow">Your coverage</span><span class="label">last seen</span></div>
+    <div id="coverage"></div>
+  </div>
+
   <div class="card hidden" id="bountyCard">
     <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
     <div class="bnote" id="bountyNote"></div>
@@ -296,7 +304,7 @@ body{
 
   </div>
 
-  <!-- (c) the feeds -->
+  <!-- (c) the activity feed -->
   <div class="col c">
 
   <div class="card">
@@ -307,11 +315,6 @@ body{
   <div class="card hidden" id="issuesCard">
     <div class="chead"><span class="eyebrow">Issues</span></div>
     <div class="feed" id="issues"></div>
-  </div>
-
-  <div class="card hidden" id="coverageCard">
-    <div class="chead"><span class="eyebrow">Your coverage</span><span class="label">last seen</span></div>
-    <div id="coverage"></div>
   </div>
 
   </div>
