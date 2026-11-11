@@ -72,11 +72,29 @@ func uploadHistoryToCodex(up lib.MarketHistoriesUpload, server string) {
 	// History is re-fetched by the game and thus re-observable: low-value (shed first).
 	n := len(points)
 	albionID := up.AlbionId
-	line := historyLine(itemNameFromID(int(albionID)), int(up.QualityLevel), int(up.Timescale), points)
-	enqueueCodexUpload("Market history", "/api/client/market-history", body, n, true, func() {
+	quality, timescale := int(up.QualityLevel), int(up.Timescale)
+	enqueueCodexUploadWithReply("Market history", "/api/client/market-history", body, n, true, func(reply []byte) {
 		log.Infof("Codex: uploaded %d market-history points for item %d.", n, albionID)
-		Status.addActivity(line)
+		Status.addActivity(historyLine(historyReplyItem(reply), quality, timescale, points))
 	})
+}
+
+// historyReplyItem reads which item the site says the chart was for.
+//
+// The chart request carries only the game's NUMERIC item id, a position in the
+// game's item list that shifts on every patch. The client used to resolve it
+// with a bundled copy of that list; the copy went stale and the feed named the
+// wrong item (a planks chart shown as a steel bar, 2026-11-11). The site keeps
+// the current list, so it answers, and without an answer the line names no item
+// at all rather than guess.
+func historyReplyItem(reply []byte) string {
+	var r struct {
+		ItemID string `json:"item_id"`
+	}
+	if json.Unmarshal(reply, &r) != nil {
+		return ""
+	}
+	return strings.TrimSpace(r.ItemID)
 }
 
 // historyAverage is the game's "Average Price" for a price chart: all the silver

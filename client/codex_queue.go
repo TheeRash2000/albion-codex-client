@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,6 +36,9 @@ type codexUploadJob struct {
 	rows     int    // row count for recordUploadOutcome
 	lowValue bool   // sheddable first on overflow
 	onOK     func() // caller-specific success side effects (activity / status)
+	// onReply is onOK for a caller that needs what the site answered (the item a
+	// numeric id resolved to). Given the reply body, capped at maxReplyBytes.
+	onReply func(reply []byte)
 
 	attempts int
 	nextAt   time.Time
@@ -42,9 +46,9 @@ type codexUploadJob struct {
 
 const (
 	codexQueueMax     = 500                    // hard cap; overflow sheds low-value oldest first
-	codexUploadMaxTry = 6                       // give up after this many failed attempts (~1m of backoff)
-	codexQueuePoll    = 750 * time.Millisecond  // worker tick
-	codexRetryCap     = 60 * time.Second        // max single backoff
+	codexUploadMaxTry = 6                      // give up after this many failed attempts (~1m of backoff)
+	codexQueuePoll    = 750 * time.Millisecond // worker tick
+	codexRetryCap     = 60 * time.Second       // max single backoff
 )
 
 type codexUploadQueue struct {
@@ -71,7 +75,20 @@ func startCodexUploadQueue() {
 // nothing is sheddable it drops this job and flags an Issue - a loss is never
 // silent.
 func enqueueCodexUpload(stream, path string, body []byte, rows int, lowValue bool, onOK func()) {
-	j := &codexUploadJob{stream: stream, path: path, body: body, rows: rows, lowValue: lowValue, onOK: onOK, nextAt: time.Now()}
+	enqueueCodexJob(&codexUploadJob{stream: stream, path: path, body: body, rows: rows, lowValue: lowValue, onOK: onOK, nextAt: time.Now()})
+}
+
+// enqueueCodexUploadWithReply is enqueueCodexUpload for a caller that reads the
+// site's answer on success.
+func enqueueCodexUploadWithReply(stream, path string, body []byte, rows int, lowValue bool, onReply func(reply []byte)) {
+	enqueueCodexJob(&codexUploadJob{stream: stream, path: path, body: body, rows: rows, lowValue: lowValue, onReply: onReply, nextAt: time.Now()})
+}
+
+// maxReplyBytes bounds how much of an upload reply is kept for onReply.
+const maxReplyBytes = 64 << 10
+
+func enqueueCodexJob(j *codexUploadJob) {
+	stream := j.stream
 
 	// Mutate the queue under the lock; run Status reporting (which takes the status
 	// lock) only AFTER releasing codexQ.mu, to keep a single lock order.
@@ -189,6 +206,12 @@ func (q *codexUploadQueue) send(client *http.Client, token string, j *codexUploa
 	}
 	sc := resp.StatusCode
 	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+	var reply []byte
+	if j.onReply != nil && sc >= 200 && sc < 300 {
+		// Best-effort: a reply that cannot be read is an empty one, and the caller
+		// falls back to a line without the detail. The upload itself succeeded.
+		reply, _ = io.ReadAll(io.LimitReader(resp.Body, maxReplyBytes))
+	}
 	resp.Body.Close()
 
 	switch {
@@ -196,6 +219,9 @@ func (q *codexUploadQueue) send(client *http.Client, token string, j *codexUploa
 		recordUploadOutcome(j.stream, j.rows, sc, nil) // counts sent + clears tokenRejected
 		if j.onOK != nil {
 			j.onOK()
+		}
+		if j.onReply != nil {
+			j.onReply(reply)
 		}
 	case sc == http.StatusUnauthorized:
 		// Token revoked: flag the re-link state (recordUploadOutcome sets it) and
