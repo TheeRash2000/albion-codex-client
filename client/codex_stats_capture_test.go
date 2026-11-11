@@ -19,7 +19,7 @@ func TestCaptureRefreshPlan(t *testing.T) {
 		{"first upload of the session refetches at once", time.Time{}, false, true, 0},
 		{"an upload long after the last refetch refetches at once", now.Add(-10 * time.Minute), false, true, 0},
 		{"an upload exactly one window later refetches at once", now.Add(-captureRefreshEvery), false, true, 0},
-		{"an upload inside the window arms one refetch for the end of it", now.Add(-30 * time.Second), false, false, 90 * time.Second},
+		{"an upload inside the window arms one refetch for the end of it", now.Add(-10 * time.Second), false, false, captureRefreshEvery - 10*time.Second},
 		{"more uploads while one is armed do nothing", now.Add(-30 * time.Second), true, false, 0},
 		{"armed wins even when the window has passed", now.Add(-10 * time.Minute), true, false, 0},
 	}

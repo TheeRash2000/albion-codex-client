@@ -17,8 +17,11 @@ import (
 // arrive, and the last batch is never left out.
 
 // captureRefreshEvery is the shortest gap between two refetches caused by
-// price uploads.
-const captureRefreshEvery = 2 * time.Minute
+// price uploads. Thirty seconds: a scanned item leaves Most wanted on the next
+// refetch, and at two minutes a player who scanned three in a row watched the
+// list sit still for most of that. The read is a few small indexed queries, and
+// it only repeats while prices are actually being uploaded.
+const captureRefreshEvery = 30 * time.Second
 
 var captureRefresh struct {
 	mu      sync.Mutex
