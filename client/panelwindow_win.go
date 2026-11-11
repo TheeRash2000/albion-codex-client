@@ -31,6 +31,10 @@ import (
 // the cgo Npcap already requires, and vendors 677 KB rather than a GUI toolkit.
 
 const (
+	// taskbarAllowance keeps the window from opening taller than the space above
+	// the taskbar on a short screen (768 high laptops).
+	taskbarAllowance = 56
+
 	// dwmUseImmersiveDarkMode makes Windows paint the window's own frame dark.
 	// Only matters for the resize border here, since the caption is gone, but a
 	// light hairline around a near-black page is very visible without it.
@@ -85,7 +89,7 @@ func runPanelWindow(url string) {
 	scale := displayScale()
 	saved := LoadCodexSettings()
 	width, height := panelSize(saved.PanelWidth, saved.PanelHeight, scale,
-		w32.GetSystemMetrics(w32.SM_CXSCREEN), w32.GetSystemMetrics(w32.SM_CYSCREEN))
+		w32.GetSystemMetrics(w32.SM_CXSCREEN), w32.GetSystemMetrics(w32.SM_CYSCREEN)-taskbarAllowance)
 
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		Debug: false,
