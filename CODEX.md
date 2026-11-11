@@ -135,7 +135,9 @@ upstream commits, and opens a pull request when the game code tables differ.
   is narrowed; it is resizable and reopens at the size it was left at. The coverage
   list and capture totals refresh after market prices upload (at most once every
   two minutes), not only hourly. Most wanted sits under the activity feed and
-  shows two groups: items with no price, and items with only an estimated price.
+  shows two groups: items with no price, and items with only an estimated price. The
+  account stats are refetched when the realm becomes known or changes, so the list
+  is not missing for the first hour after a start.
 
 ## Not yet wired
 

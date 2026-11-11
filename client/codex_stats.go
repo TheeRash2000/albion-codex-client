@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/json"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +85,11 @@ var (
 	statsMu        sync.RWMutex
 	statsCache     *ClientStats
 	statsFetchedAt time.Time
-	statsInFlight  bool
+	// statsFetchedServer is the realm the cached answer was asked for. Most wanted
+	// is per realm, and a fetch made before the realm is known comes back with
+	// none, so the answer is stale as soon as the realm is known or changes.
+	statsFetchedServer string
+	statsInFlight      bool
 	// statsStaleGen counts markClientStatsStale calls, so a fetch that was already
 	// in flight when a trade was recorded does not stamp its older answer as fresh.
 	statsStaleGen int
@@ -102,9 +107,26 @@ func CachedClientStats() *ClientStats {
 // clientStatsFresh reports whether the cached stats are recent enough to serve
 // without a refetch.
 func clientStatsFresh() bool {
+	server := currentStatsServer() // read before taking statsMu: it takes its own lock
 	statsMu.RLock()
 	defer statsMu.RUnlock()
-	return statsCache != nil && time.Since(statsFetchedAt) < statsMaxAge
+	return statsFreshFor(statsCache != nil, time.Since(statsFetchedAt), statsFetchedServer, server)
+}
+
+// currentStatsServer is the realm a fetch would ask for right now.
+func currentStatsServer() string {
+	return strings.TrimSpace(Status.Snapshot().Server)
+}
+
+// statsFreshFor decides whether a cached answer can be served without a
+// refetch: it must exist, be younger than statsMaxAge, and have been asked for
+// the realm the client is on now. An unknown current realm never forces a
+// refetch, since asking again would get the same realm-less answer.
+func statsFreshFor(cached bool, age time.Duration, fetchedServer, currentServer string) bool {
+	if !cached || age >= statsMaxAge {
+		return false
+	}
+	return currentServer == "" || strings.EqualFold(fetchedServer, currentServer)
 }
 
 // markClientStatsStale makes the next read refetch. Called when this client has
@@ -132,13 +154,13 @@ func refreshClientStatsAfterTrade() {
 // requests. That is the mistake this codebase has made before, in the AODP
 // estimate path, where one call became fifty.
 func RefreshClientStatsIfStale() {
+	server := currentStatsServer() // read before taking statsMu: it takes its own lock
 	statsMu.Lock()
 	if statsInFlight {
 		statsMu.Unlock()
 		return
 	}
-	fresh := statsCache != nil && time.Since(statsFetchedAt) < statsMaxAge
-	if fresh {
+	if statsFreshFor(statsCache != nil, time.Since(statsFetchedAt), statsFetchedServer, server) {
 		statsMu.Unlock()
 		return
 	}
@@ -147,12 +169,13 @@ func RefreshClientStatsIfStale() {
 	statsMu.Unlock()
 
 	go func() {
-		s, err := fetchClientStats()
+		s, err := fetchClientStats(server)
 
 		statsMu.Lock()
 		statsInFlight = false
 		if err == nil && s != nil {
 			statsCache = s
+			statsFetchedServer = server
 			// If a trade was recorded while this was in flight, the answer may
 			// predate it: show it, but leave it stale so the next read refetches.
 			if statsStaleGen == gen {
@@ -171,7 +194,7 @@ func RefreshClientStatsIfStale() {
 }
 
 // fetchClientStats performs the authenticated read. Paired-only.
-func fetchClientStats() (*ClientStats, error) {
+func fetchClientStats(server string) (*ClientStats, error) {
 	token := strings.TrimSpace(ConfigGlobal.CodexToken)
 	if token == "" {
 		return nil, errNotPaired
@@ -186,8 +209,8 @@ func fetchClientStats() (*ClientStats, error) {
 	// Send the realm we detected so the response can carry that region's bounties.
 	// Omitted when unknown (no game packet seen yet), which the server answers with
 	// null bounties rather than a wrong region's.
-	if srv := strings.TrimSpace(Status.Snapshot().Server); srv != "" {
-		url += "?server=" + srv
+	if server != "" {
+		url += "?server=" + neturl.QueryEscape(server)
 	}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
