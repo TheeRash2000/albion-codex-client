@@ -140,7 +140,9 @@ upstream commits, and opens a pull request when the game code tables differ.
   is not missing for the first hour after a start. A wanted item shows which
   enchant levels need the scan (5.0, 5.2, or 5.1-5.4 for a run). Activity lines
   use in-game item names from an embedded table (`client/itemnames.tsv.gz`), and
-  name the quality instead of Q2 to Q5.
+  name the quality instead of Q2 to Q5. A price chart line shows the
+  average the game shows for that window (all silver over all items sold). An
+  identical line repeated within ten seconds is not added twice.
 
 ## Not yet wired
 
