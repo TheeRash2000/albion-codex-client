@@ -3,13 +3,14 @@ package client
 // The panel window's size.
 //
 // Wide by default so the cards sit side by side: three columns at the default
-// width, with nothing below the fold on a typical account. The player can
+// width, and tall enough that a full Most wanted list still leaves the activity
+// feed several lines, with nothing below the fold on a typical account. The player can
 // resize it, and the size they leave it at is what it opens with next time.
 
 const (
 	// Default size, in pixels at 100% display scaling.
 	panelDefaultWidth  = 1180
-	panelDefaultHeight = 700
+	panelDefaultHeight = 780
 
 	// Smaller than this the single-column layout stops being readable.
 	panelMinWidth  = 400

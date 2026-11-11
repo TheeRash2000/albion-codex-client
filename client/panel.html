@@ -61,7 +61,7 @@ body{
 
 /* ---- columns ----
    The panel grows sideways, not downwards. Three groups: (a) status and what is
-   captured, (b) the account view, (c) the activity feed. One column when narrow, two
+   captured, (b) the account view, (c) activity and what to scan next. One column when narrow, two
    with the feeds spread underneath at medium width, three side by side when
    wide. A new card goes in the group with room, not on the end of a stack. */
 .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 11px;align-items:start}
@@ -74,9 +74,10 @@ body{
 @media (min-width:1100px){
   .cols{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"a b c"}
   .col.c{display:block}
-  /* Side by side, the activity feed has the column to itself: let it run the
-     height of the window instead of a short fixed box. */
-  #activity{max-height:calc(100vh - 185px)}
+  /* Side by side, the activity feed takes whatever height the column has left
+     once Most wanted (--wanted-h, set by renderBounties; 0 when hidden) has its
+     room, so both are on screen without scrolling the page. */
+  #activity{max-height:max(96px,calc(100vh - 185px - var(--wanted-h,0px)))}
 }
 
 .card{background:linear-gradient(180deg,var(--lx-card-from),var(--lx-card-to));
@@ -159,6 +160,10 @@ body{
 
 /* ---- bounties ---- */
 .bnote{padding:10px 13px 4px;font-size:12.5px;color:var(--lx-parch-dim);font-style:italic;line-height:1.45}
+/* A second group inside the card: items that only have an estimated price. */
+.bsub{padding:8px 13px 0;border-top:1px solid var(--lx-rule);margin-top:4px}
+.bsub:first-child{border-top:none;margin-top:0}
+.bsub + .bnote{padding:2px 13px 4px}
 .bq{font-family:var(--cin);font-size:11px;color:var(--lx-gold-bright);min-width:56px;text-align:right;flex:none}
 .tier{font-family:var(--cin);font-size:8px;letter-spacing:.05em;color:var(--lx-gold);border:1px solid var(--lx-rule);
   border-radius:3px;padding:1px 5px;margin-right:7px;vertical-align:1px}
@@ -295,21 +300,21 @@ body{
     <div id="coverage"></div>
   </div>
 
-  <div class="card hidden" id="bountyCard">
-    <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
-    <div class="bnote" id="bountyNote"></div>
-    <div id="bounties"></div>
-    <div class="bact hidden" id="bountyActs"><button type="button" class="cpy" id="copyAll">Copy all</button></div>
   </div>
 
-  </div>
-
-  <!-- (c) the activity feed -->
+  <!-- (c) activity and what to scan next -->
   <div class="col c">
 
   <div class="card">
     <div class="chead"><span class="eyebrow">Recent activity</span></div>
     <div class="feed" id="activity"><div class="empty">No activity yet - log in and change zones.</div></div>
+  </div>
+
+  <div class="card hidden" id="bountyCard">
+    <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
+    <div class="bnote" id="bountyNote"></div>
+    <div id="bounties"></div>
+    <div class="bact hidden" id="bountyActs"><button type="button" class="cpy" id="copyAll">Copy all</button></div>
   </div>
 
   <div class="card hidden" id="issuesCard">
@@ -618,10 +623,72 @@ function renderAccount(s) {
   }));
 }
 
-/* Most wanted: what to scan next, and what it unlocks.
+/* Most wanted: what to scan next, and what it does.
+   Two kinds of entry, never mixed under one explanation:
+     - no price at all: scanning it unlocks pricing for whatever is made from it;
+     - estimate only (w.estimated): we can work a price out, and a scan replaces
+       that with a real one.
    Hidden entirely when there is nothing to show - a realm we have not detected,
    or one that has never been computed. An empty list would read as "nothing is
    wanted", which is the opposite of true. */
+function bountyRow(w) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const name = document.createElement('span');
+  name.className = 'rname';
+  /* Newer responses carry the in-game name and tier; older ones only the raw
+     id, so fall back to the id-based label rather than rendering nothing. */
+  if (w.name) {
+    if (w.tier) {
+      const t = document.createElement('span');
+      t.className = 'tier';
+      t.textContent = 'T' + w.tier;
+      name.append(t);
+    }
+    name.append(w.name);
+  } else {
+    name.textContent = prettyItem(w.id);
+  }
+  const n = document.createElement('span');
+  n.className = 'bq';
+  n.textContent = nf(w.blocks);
+  const unit = document.createElement('span');
+  unit.className = 'rmeta';
+  /* What the number counts differs: items a missing price is blocking, or
+     prices a scan would make real. */
+  unit.textContent = w.estimated
+    ? (w.blocks === 1 ? 'price' : 'prices')
+    : (w.blocks === 1 ? 'item' : 'items');
+  row.title = w.estimated
+    ? 'A scan makes ' + nf(w.blocks) + (w.blocks === 1 ? ' price' : ' prices') + ' real instead of estimated'
+    : 'A scan unlocks pricing for ' + nf(w.blocks) + (w.blocks === 1 ? ' item' : ' items');
+  row.append(name, n, unit);
+  if (w.copyText) {
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'cpy';
+    c.textContent = 'Copy';
+    c.title = 'Copy the market search text';
+    c.setAttribute('aria-label', 'Copy search text for ' + (w.name || prettyItem(w.id)));
+    c.addEventListener('click', () => copyWithFeedback(c, w.copyText, 'Copy'));
+    row.append(c);
+  }
+  return row;
+}
+
+function bountyGroup(label, note, items) {
+  const head = document.createElement('div');
+  head.className = 'bsub';
+  const l = document.createElement('span');
+  l.className = 'label';
+  l.textContent = label;
+  head.append(l);
+  const n = document.createElement('div');
+  n.className = 'bnote';
+  n.textContent = note;
+  return [head, n, ...items.map(bountyRow)];
+}
+
 function renderBounties(b) {
   const card = $('bountyCard');
   const list = $('bounties');
@@ -632,48 +699,23 @@ function renderBounties(b) {
   }
 
   $('bountyScope').textContent = b.server || '';
-  $('bountyNote').textContent =
-    'Scan any of these in a market and you unlock pricing for the items below them, '
-    + 'for everyone on ' + (b.server || 'your realm') + '.';
 
+  /* The site sends the no-price items first; keep its order inside each group. */
   const shown = wanted.slice(0, 6);
-  list.replaceChildren(...shown.map((w) => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    const name = document.createElement('span');
-    name.className = 'rname';
-    /* Newer responses carry the in-game name and tier; older ones only the raw
-       id, so fall back to the id-based label rather than rendering nothing. */
-    if (w.name) {
-      if (w.tier) {
-        const t = document.createElement('span');
-        t.className = 'tier';
-        t.textContent = 'T' + w.tier;
-        name.append(t);
-      }
-      name.append(w.name);
-    } else {
-      name.textContent = prettyItem(w.id);
-    }
-    const n = document.createElement('span');
-    n.className = 'bq';
-    n.textContent = nf(w.blocks);
-    const unit = document.createElement('span');
-    unit.className = 'rmeta';
-    unit.textContent = w.blocks === 1 ? 'item' : 'items';
-    row.append(name, n, unit);
-    if (w.copyText) {
-      const c = document.createElement('button');
-      c.type = 'button';
-      c.className = 'cpy';
-      c.textContent = 'Copy';
-      c.title = 'Copy the market search text';
-      c.setAttribute('aria-label', 'Copy search text for ' + (w.name || prettyItem(w.id)));
-      c.addEventListener('click', () => copyWithFeedback(c, w.copyText, 'Copy'));
-      row.append(c);
-    }
-    return row;
-  }));
+  const gaps = shown.filter((w) => !w.estimated);
+  const estimates = shown.filter((w) => w.estimated);
+  const nodes = [];
+  if (gaps.length) {
+    nodes.push(...bountyGroup('No price yet',
+      'Scan one in a market and everything made from it can be priced.', gaps));
+  }
+  if (estimates.length) {
+    nodes.push(...bountyGroup('Estimate only',
+      'Scan one in a market to replace the estimate with a real price.', estimates));
+  }
+  list.replaceChildren(...nodes);
+  /* The notes now sit inside the groups. */
+  $('bountyNote').classList.add('hidden');
 
   /* One copyText per line, de-duplicated, in list order. */
   const lines = [];
@@ -683,6 +725,19 @@ function renderBounties(b) {
   $('bountyActs').classList.toggle('hidden', lines.length < 2);
   card.classList.remove('hidden');
 }
+
+/* Tell the activity feed how much of the column Most wanted takes (the card plus
+   the gap under it; nothing while it is hidden). Observed, not measured once:
+   the card's height changes with its rows, with text wrapping as the window is
+   resized, and when it appears or goes. */
+(function () {
+  const card = $('bountyCard');
+  const set = () => document.documentElement.style.setProperty('--wanted-h',
+    card.classList.contains('hidden') ? '0px' : (card.offsetHeight + 11) + 'px');
+  if (window.ResizeObserver) new ResizeObserver(set).observe(card);
+  new MutationObserver(set).observe(card, { attributes: true, attributeFilter: ['class'] });
+  set();
+})();
 
 /* Clipboard. navigator.clipboard works in WebView2 because the panel is served
    from 127.0.0.1 (a secure context) and the call runs inside a click. If it is

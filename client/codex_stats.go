@@ -60,6 +60,9 @@ type ClientStats struct {
 			Name     string `json:"name,omitempty"`
 			Tier     int    `json:"tier,omitempty"`
 			CopyText string `json:"copyText,omitempty"`
+			// True when the item has an estimated price and no real one, rather
+			// than no price at all. Older responses never set it.
+			Estimated bool `json:"estimated,omitempty"`
 		} `json:"wanted"`
 	} `json:"bounties"`
 	// The owner's Codex+ contribution. Nil when the site does not send it (an
