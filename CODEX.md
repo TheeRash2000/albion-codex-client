@@ -130,7 +130,9 @@ upstream commits, and opens a pull request when the game code tables differ.
   30 days. Hidden when the site sends no totals; no profit figure.
 - **0.1.23** - a sale is recorded at what it realized (the mail's total divided by
   the quantity), not at the listed price. The ledger card refreshes as soon as a
-  sale or purchase is recorded.
+  sale or purchase is recorded. The panel window is wide
+  (1180 x 700) with its cards in three columns, falling to two and then one as it
+  is narrowed; it is resizable and reopens at the size it was left at.
 
 ## Not yet wired
 

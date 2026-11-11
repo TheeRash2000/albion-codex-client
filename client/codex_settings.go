@@ -59,6 +59,11 @@ type codexSettings struct {
 	// The version this install last ran, so a new build can tell it has just been
 	// updated and say once what changed (update_note.go).
 	LastRunVersion string `json:"last_run_version,omitempty"`
+
+	// The size the player left the panel window at (panel_size.go). Zero means
+	// never resized: open at the default.
+	PanelWidth  int `json:"panel_width,omitempty"`
+	PanelHeight int `json:"panel_height,omitempty"`
 }
 
 // aodpUploadOrDefault resolves the tri-state: an explicit choice wins, absence
