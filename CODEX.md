@@ -137,7 +137,8 @@ upstream commits, and opens a pull request when the game code tables differ.
   two minutes), not only hourly. Most wanted sits under the activity feed and
   shows two groups: items with no price, and items with only an estimated price. The
   account stats are refetched when the realm becomes known or changes, so the list
-  is not missing for the first hour after a start.
+  is not missing for the first hour after a start. A wanted item shows which
+  enchant levels need the scan (5.0, 5.2, or 5.1-5.4 for a run).
 
 ## Not yet wired
 
