@@ -171,6 +171,10 @@ func recordUploadOutcome(stream string, n int, statusCode int, err error) {
 	case statusCode >= 200 && statusCode < 300:
 		Status.recordSent(stream, n)
 		Status.setTokenRejected(false)
+		if stream == marketStream {
+			// New prices change the coverage list and totals the panel shows.
+			refreshClientStatsAfterCapture()
+		}
 	case statusCode == 401:
 		Status.recordFailed(stream, "device token rejected (401) - re-pair the client")
 		Status.setTokenRejected(true)

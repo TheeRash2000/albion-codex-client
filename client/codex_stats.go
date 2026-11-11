@@ -19,7 +19,8 @@ import (
 // as well, because the client is where a capturing player already is.
 //
 // Read through /api/client/stats with the device token (migration 046's
-// client_stats RPC). Fetched on panel open and at most hourly, NEVER on the
+// client_stats RPC). Fetched on panel open, at most hourly, and after this client
+// uploads a trade or market prices (paced, codex_stats_capture.go). NEVER on the
 // panel's 2s status tick - the aggregate is cheap (78 ms measured against the
 // heaviest contributor on prod) but it is a database round trip per call, and
 // polling it every two seconds for the life of the process would be the same

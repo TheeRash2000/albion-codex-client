@@ -132,7 +132,9 @@ upstream commits, and opens a pull request when the game code tables differ.
   the quantity), not at the listed price. The ledger card refreshes as soon as a
   sale or purchase is recorded. The panel window is wide
   (1180 x 700) with its cards in three columns, falling to two and then one as it
-  is narrowed; it is resizable and reopens at the size it was left at.
+  is narrowed; it is resizable and reopens at the size it was left at. The coverage
+  list and capture totals refresh after market prices upload (at most once every
+  two minutes), not only hourly.
 
 ## Not yet wired
 
