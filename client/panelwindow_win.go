@@ -31,9 +31,6 @@ import (
 // the cgo Npcap already requires, and vendors 677 KB rather than a GUI toolkit.
 
 const (
-	panelWidth  = 480
-	panelHeight = 800
-
 	// dwmUseImmersiveDarkMode makes Windows paint the window's own frame dark.
 	// Only matters for the resize border here, since the caption is gone, but a
 	// light hairline around a near-black page is very visible without it.
@@ -85,12 +82,17 @@ func runPanelWindow(url string) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	scale := displayScale()
+	saved := LoadCodexSettings()
+	width, height := panelSize(saved.PanelWidth, saved.PanelHeight, scale,
+		w32.GetSystemMetrics(w32.SM_CXSCREEN), w32.GetSystemMetrics(w32.SM_CYSCREEN))
+
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		Debug: false,
 		WindowOptions: webview2.WindowOptions{
 			Title:  "Codex Client",
-			Width:  panelWidth,
-			Height: panelHeight,
+			Width:  uint(width),
+			Height: uint(height),
 			Center: true,
 		},
 	})
@@ -108,6 +110,9 @@ func runPanelWindow(url string) {
 	panelWin = w
 	panelHWND = hwnd
 	panelWinMu.Unlock()
+
+	minW, minH := panelMinSize(scale)
+	w.SetSize(minW, minH, webview2.HintMin)
 
 	makeFrameless(hwnd)
 	setWindowIcon(hwnd)
@@ -226,6 +231,13 @@ func bindWindowControls(w webview2.WebView, hwnd w32.HWND) {
 	_ = w.Bind("codexMinimize", func() {
 		w32.ShowWindow(hwnd, w32.SW_MINIMIZE)
 	})
+	// The page calls this once a resize has settled. A minimised window reports
+	// a rectangle far below the minimum size, which rememberPanelSize ignores.
+	_ = w.Bind("codexSaveSize", func() {
+		if r := w32.GetWindowRect(hwnd); r != nil {
+			rememberPanelSize(int(r.Right-r.Left), int(r.Bottom-r.Top))
+		}
+	})
 	// Close HIDES rather than destroys. The client keeps capturing with the
 	// window shut, and hiding means reopening from the tray is instant and keeps
 	// scroll position, instead of paying WebView2 startup again. The renderer is
@@ -233,6 +245,21 @@ func bindWindowControls(w webview2.WebView, hwnd w32.HWND) {
 	_ = w.Bind("codexClose", func() {
 		w32.ShowWindow(hwnd, w32.SW_HIDE)
 	})
+}
+
+// displayScale is the display scaling of the primary screen: 1.0 at 100%, 1.5
+// at 150%. It is 1.0 when Windows is already scaling the window for us.
+func displayScale() float64 {
+	hdc := w32.GetDC(0)
+	if hdc == 0 {
+		return 1
+	}
+	defer w32.ReleaseDC(0, hdc)
+	dpi := w32.GetDeviceCaps(hdc, w32.LOGPIXELSX)
+	if dpi < 96 {
+		return 1
+	}
+	return float64(dpi) / 96
 }
 
 // focusWindow restores and raises an existing panel window.

@@ -59,6 +59,23 @@ body{
 .scroll::-webkit-scrollbar-thumb{background:var(--lx-border);border-radius:4px}
 .scroll::-webkit-scrollbar-thumb:hover{background:var(--lx-border)}
 
+/* ---- columns ----
+   The panel grows sideways, not downwards. Three groups: (a) status and what is
+   captured, (b) the account view, (c) the feeds. One column when narrow, two
+   with the feeds spread underneath at medium width, three side by side when
+   wide. A new card goes in the group with room, not on the end of a stack. */
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 11px;align-items:start}
+.col{min-width:0}
+@media (min-width:740px){
+  .cols{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"a b" "c c"}
+  .col.a{grid-area:a} .col.b{grid-area:b}
+  .col.c{grid-area:c;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0 11px;align-items:start}
+}
+@media (min-width:1100px){
+  .cols{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:"a b c"}
+  .col.c{display:block}
+}
+
 .card{background:linear-gradient(180deg,var(--lx-card-from),var(--lx-card-to));
   border:1px solid var(--lx-rule);border-radius:6px;margin-bottom:11px;overflow:hidden}
 .chead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 13px;border-bottom:1px solid var(--lx-rule)}
@@ -190,6 +207,11 @@ body{
     </div>
   </div>
 
+  <div class="cols">
+
+  <!-- (a) status and what is captured -->
+  <div class="col a">
+
   <div class="card hero">
     <div class="hrow">
       <span class="dot" id="dot"></span>
@@ -202,6 +224,8 @@ body{
       <span class="n" id="metaValue">-</span>
     </div>
   </div>
+
+  <div class="acts" id="acts"></div>
 
   <div class="card">
     <div class="chead"><span class="eyebrow">What is tracked</span><span class="label" id="realm"></span></div>
@@ -233,38 +257,10 @@ body{
     <div class="hl" id="captures"></div>
   </div>
 
-  <div class="card hidden" id="bountyCard">
-    <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
-    <div class="bnote" id="bountyNote"></div>
-    <div id="bounties"></div>
-    <div class="bact hidden" id="bountyActs"><button type="button" class="cpy" id="copyAll">Copy all</button></div>
   </div>
 
-  <div class="card hidden" id="coverageCard">
-    <div class="chead"><span class="eyebrow">Your coverage</span><span class="label">last seen</span></div>
-    <div id="coverage"></div>
-  </div>
-
-  <div class="card">
-    <div class="chead"><span class="eyebrow">Recent activity</span></div>
-    <div class="feed" id="activity"><div class="empty">No activity yet - log in and change zones.</div></div>
-  </div>
-
-  <div class="card hidden" id="issuesCard">
-    <div class="chead"><span class="eyebrow">Issues</span></div>
-    <div class="feed" id="issues"></div>
-  </div>
-
-  <!-- Market sales and purchases totals. Hidden until the site sends a ledger. -->
-  <div class="card hidden" id="ledgerCard">
-    <div class="chead"><span class="eyebrow">Your ledger</span></div>
-    <div class="ledger">
-      <div class="lw" id="ledgerWeek"></div>
-      <div class="lm hidden" id="ledgerMonth"></div>
-      <div class="lf hidden" id="ledgerFooter"></div>
-      <button class="llink" id="ledgerLink" type="button"></button>
-    </div>
-  </div>
+  <!-- (b) the account view -->
+  <div class="col b">
 
   <div class="card">
     <!-- Filled in by renderPlus from /api/stats. This markup is the fallback an
@@ -280,7 +276,47 @@ body{
     </div>
   </div>
 
-  <div class="acts" id="acts"></div>
+  <!-- Market sales and purchases totals. Hidden until the site sends a ledger. -->
+  <div class="card hidden" id="ledgerCard">
+    <div class="chead"><span class="eyebrow">Your ledger</span></div>
+    <div class="ledger">
+      <div class="lw" id="ledgerWeek"></div>
+      <div class="lm hidden" id="ledgerMonth"></div>
+      <div class="lf hidden" id="ledgerFooter"></div>
+      <button class="llink" id="ledgerLink" type="button"></button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="bountyCard">
+    <div class="chead"><span class="eyebrow">Most wanted</span><span class="label" id="bountyScope"></span></div>
+    <div class="bnote" id="bountyNote"></div>
+    <div id="bounties"></div>
+    <div class="bact hidden" id="bountyActs"><button type="button" class="cpy" id="copyAll">Copy all</button></div>
+  </div>
+
+  </div>
+
+  <!-- (c) the feeds -->
+  <div class="col c">
+
+  <div class="card">
+    <div class="chead"><span class="eyebrow">Recent activity</span></div>
+    <div class="feed" id="activity"><div class="empty">No activity yet - log in and change zones.</div></div>
+  </div>
+
+  <div class="card hidden" id="issuesCard">
+    <div class="chead"><span class="eyebrow">Issues</span></div>
+    <div class="feed" id="issues"></div>
+  </div>
+
+  <div class="card hidden" id="coverageCard">
+    <div class="chead"><span class="eyebrow">Your coverage</span><span class="label">last seen</span></div>
+    <div id="coverage"></div>
+  </div>
+
+  </div>
+
+  </div>
 
   <div class="foot">
     Keep this running, then <b>log in to Albion or travel to another zone</b>.
@@ -310,6 +346,12 @@ $('bar').addEventListener('mousedown', (e) => {
 });
 $('btnMin').addEventListener('click', () => hostCall('codexMinimize'));
 $('btnClose').addEventListener('click', () => hostCall('codexClose'));
+/* The host remembers the window's size. Told once the resizing has stopped. */
+let sizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(sizeTimer);
+  sizeTimer = setTimeout(() => hostCall('codexSaveSize'), 600);
+});
 /* Double-click a title bar to maximise is a habit; there is no maximise here,
    so swallow it rather than letting it select text. */
 $('bar').addEventListener('dblclick', (e) => e.preventDefault());
