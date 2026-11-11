@@ -186,6 +186,10 @@ func (l *listener) processPacket(packet gopacket.Packet) {
 
 	l.router.albionstate.GameServerIP = ipv4.SrcIP.String()
 	l.router.albionstate.AODataServerID, l.router.albionstate.AODataIngestBaseURL = l.router.albionstate.GetServer()
+	// Tell the panel the realm as soon as the game server is recognised, not only
+	// when something is first uploaded: Most wanted is per realm and would stay
+	// hidden until the player changed zone or opened a market. A no-op once set.
+	codexServerName(l.router.albionstate.AODataServerID)
 	log.Tracef("Server ID: %d", l.router.albionstate.AODataServerID)
 	log.Tracef("Using AODataIngestBaseURL: %s", l.router.albionstate.AODataIngestBaseURL)
 

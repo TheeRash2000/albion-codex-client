@@ -281,6 +281,10 @@ func (s *ClientStatus) setServer(name string) {
 	s.mu.Lock()
 	s.server = name
 	s.mu.Unlock()
+	// The account stats are asked for per realm (Most wanted), so an answer
+	// fetched before this was known is now stale. Refetch without waiting for
+	// the panel to ask.
+	go RefreshClientStatsIfStale()
 }
 
 func (s *ClientStatus) setNpcapMissing(v bool) {
